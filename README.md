@@ -1,1 +1,5 @@
-# Local_Chatbot_MCP_v1
+# Installation steps
+
+- Projects folder created
+- Git installed via MacOS tool
+- Git config name and email
