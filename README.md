@@ -14,6 +14,8 @@
 -- uv env
 -- source .venv/bin/activate
 -- (deactivate)
+- Some packages installed
+-- uv pip install "mcp[cli]" flask transformers torch pydantic
 
 ## Setup of Docker container to then run images of compiled code
 
