@@ -3,6 +3,8 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+IBM_lab_GenAI_with_python/
+
 # C extensions
 *.so
 
