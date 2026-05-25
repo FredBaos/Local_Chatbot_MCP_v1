@@ -21,6 +21,14 @@
 
 TODO
 
-echo >> /Users/fredericmyotte/.zprofile
-    echo 'eval "$(/opt/homebrew/bin/brew shellenv zsh)"' >> /Users/fredericmyotte/.zprofile
-    eval "$(/opt/homebrew/bin/brew shellenv zsh)"
+## Other things to explore, include or change in my project
+
+- prettify the UI, retake html css and js files
+- move to a bigger local model to have a better chatbot
+-- use other torch models or apple MLX with Llama 3.2 or Qwen 2.5 
+- include some RAG capabilities
+- study MCP question and understand concrete applications
+
+## Other ideas of things to do
+
+- see to do some data engineering project, create some vector DB, check latest techs (dbt)
