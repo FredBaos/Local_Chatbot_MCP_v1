@@ -5,7 +5,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chatbot</title>
-    <meta name="author" content="J.C. Chen">
     <!-- <link rel="stylesheet" href="css/style.css" /> -->
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
     <!-- <link rel="shortcut icon" href='favicon.ico' type="image/x-icon">
@@ -16,25 +15,20 @@
   <!--end general information-->
   <body>
 
-    <!-- <header>
-      <div class="color-block"></div>
-    </header> -->
-
     <!--Chatbot container-->
     <main>  
       <div class="chatbot">
         <div class="chat-header">
-          <h1>My LLM</h1>
+          <div class="title-wrapper">
+            <h1>Freddy's LLM</h1>
+            <p class="subtitle">A polished local AI assistant for fast, intelligent conversation.</p>
+          </div>
         </div>
-        <div class="header-sub-text">
-          <p>Copyright © JC 2023 - Created by JC with <a class="purple">❤</a></p>
-        </div>
-
         <div class="spacer" id="messages-container"></div>
-        
-        <form class="chat-form" id="message-form">
-          <textarea type="text" id="message-input" placeholder="Send a message..."></textarea>
-          <button type="submit">➤</button> 
+
+        <form class="chat-form" id="message-form" action="#">
+          <textarea type="text" id="message-input" placeholder="Send a message..." autofocus></textarea>
+          <button type="submit">➤</button>
         </form>
       </div>
     </main>

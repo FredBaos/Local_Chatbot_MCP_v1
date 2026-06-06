@@ -8,43 +8,37 @@ const messageInput = document.getElementById('message-input');
 //
 
 //Section: function to creat the dialogue window
-const addMessage = (message, role, imgSrc) => {
-  // creat elements in the dialogue window
+const addMessage = (message, role) => {
   const messageElement = document.createElement('div');
   const textElement = document.createElement('p');
   messageElement.className = `message ${role}`;
-  const imgElement = document.createElement('img');
-  imgElement.src = `${imgSrc}`;
-  // append the image and message to the message element
-  messageElement.appendChild(imgElement);
   textElement.innerText = message;
   messageElement.appendChild(textElement);
   messagesContainer.appendChild(messageElement);
-  // creat the ending of the message
-  var clearDiv = document.createElement("div");
-  clearDiv.style.clear = "both";
+  const clearDiv = document.createElement('div');
+  clearDiv.style.clear = 'both';
   messagesContainer.appendChild(clearDiv);
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
 };
 //
 
 
 //Section: Calling the model
 const sendMessage = async (message) => {
-  // addMessage(message, 'user','user.jpeg');
-  addMessage(message, 'user','../static/user.jpeg');
+  addMessage(message, 'user');
   // Loading animation
+  const loadingRow = document.createElement('div');
+  loadingRow.className = 'loading-row';
   const loadingElement = document.createElement('div');
-  const loadingtextElement = document.createElement('p');
-  loadingElement.className = `loading-animation`;
-  loadingtextElement.className = `loading-text`;
-  loadingtextElement.innerText = 'Loading....Please wait';
-  messagesContainer.appendChild(loadingElement);
-  messagesContainer.appendChild(loadingtextElement);
+  loadingElement.className = 'loading-animation';
+  loadingRow.appendChild(loadingElement);
+  messagesContainer.appendChild(loadingRow);
+  loadingRow.scrollIntoView({ block: 'end' });
 
   async function makePostRequest(msg) {
-    const url = 'http://127.0.0.1:5000/chatbot';  // Make a POST request to this url
+    const url = '/analyze';
     const requestBody = {
-      prompt: msg
+      text: msg
     };
   
     try {
@@ -72,27 +66,16 @@ const sendMessage = async (message) => {
   data = {"response": res};
   
   // Deleting the loading animation
-  const loadanimation = document.querySelector('.loading-animation');
-  const loadtxt = document.querySelector('.loading-text');
-  loadanimation.remove();
-  loadtxt.remove();
+  loadingRow.remove();
 
   if (data.error) {
-    // Handle the error here
     const errorMessage = JSON.stringify(data);
-    // addMessage(errorMessage, 'error','Error.png');
-    addMessage(errorMessage, 'error','../static/Error.png');
+    addMessage(errorMessage, 'error');
   } else {
-    // Process the normal response here
     const responseMessage = data['response'];
-    // addMessage(responseMessage, 'aibot','Bot_logo.png');
-    addMessage(responseMessage, 'aibot','../static/Bot_logo.png');
+    addMessage(responseMessage, 'aibot');
   }
-  
-  //!!!!! code to  save the content in history
-  //
 };
-//
 
 //Section: Button to submit to the model and get the response
 messageForm.addEventListener('submit', async (event) => {
@@ -101,5 +84,17 @@ messageForm.addEventListener('submit', async (event) => {
   if (message !== '') {
     messageInput.value = '';
     await sendMessage(message);
+  }
+});
+
+// Send the message when pressing Enter in the textarea.
+messageInput.addEventListener('keydown', async (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    const message = messageInput.value.trim();
+    if (message !== '') {
+      messageInput.value = '';
+      await sendMessage(message);
+    }
   }
 });
