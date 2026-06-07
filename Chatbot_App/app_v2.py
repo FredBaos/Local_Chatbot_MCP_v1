@@ -31,10 +31,6 @@ def analyze():
             verbose=False
         )
         
-        #return jsonify({
-        #    "label": "MLX Intelligent Analysis",
-        #    "confidence": ai_response.strip()
-        #})
         return ai_response.strip()
         
     except Exception as e:

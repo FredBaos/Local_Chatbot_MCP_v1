@@ -19,17 +19,23 @@
     <main>  
       <div class="chatbot">
         <div class="chat-header">
-          <div class="title-wrapper">
+          <div class="header-top">
             <h1>Freddy's LLM</h1>
-            <p class="subtitle">A polished local AI assistant for fast, intelligent conversation.</p>
           </div>
         </div>
-        <div class="spacer" id="messages-container"></div>
-
-        <form class="chat-form" id="message-form" action="#">
-          <textarea type="text" id="message-input" placeholder="Send a message..." autofocus></textarea>
-          <button type="submit">➤</button>
-        </form>
+        <div class="chat-body">
+          <aside class="sidebar">
+            <button class="new-chat-btn" id="new-chat-btn">+ New chat</button>
+            <div class="tab-bar" id="tab-bar"></div>
+          </aside>
+          <section class="chat-main">
+            <div class="spacer" id="messages-container"></div>
+            <form class="chat-form" id="message-form" action="#">
+              <textarea type="text" id="message-input" placeholder="Send a message..." autofocus></textarea>
+              <button type="submit">➤</button>
+            </form>
+          </section>
+        </div>
       </div>
     </main>
     <!--end chatbot container-->
