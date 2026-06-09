@@ -27,6 +27,7 @@ TODO
 - keep chatbot state in some (vector) DB? 
 - enable context as each input to model independent
 - check for optimal folder structure to have MCP RAG Vector DB etc.
+- connect model to internet and create a vector db with news (TLDR) articles about AI and Tech and then use RAG
 - check other things to do (paper on google drive about AI concepts)
 - include some RAG capabilities
 - study MCP question and understand concrete applications
