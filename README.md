@@ -24,6 +24,9 @@ TODO
 
 ## Other things to explore, include or change in my project
 
+- create some knowledge or documentation and add the below + pdf from drive
+RAG : Chunking -> vectorize with embeddings in vector DB, then you can query it to retrieve relevant chunks from DB. also check interest of citation tracking and metadata usage. 
+
 - keep chatbot state in some (vector) DB? 
 - enable context as each input to model independent
 - check for optimal folder structure to have MCP RAG Vector DB etc.
