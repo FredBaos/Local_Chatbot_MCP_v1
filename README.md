@@ -34,6 +34,7 @@ RAG : Chunking -> vectorize with embeddings in vector DB, then you can query it 
 - check other things to do (paper on google drive about AI concepts)
 - include some RAG capabilities
 - study MCP question and understand concrete applications
+- check multi-agents systems: Langchain & crewai
 
 ## Other ideas of things to do
 
