@@ -11,12 +11,12 @@
 ## Setup of python, Jupyter and venv
 
 - UV used for python venvs (installed with brew)
--- uv env
--- source .venv/bin/activate
--- (deactivate)
+    - uv init
+    - source .venv/bin/activate
+    - (deactivate)
 - Some packages installed
--- uv pip install "mcp[cli]" flask transformers torch pydantic
--- also installed mlx-lm (Apple open souce ML framework)
+    - uv pip install "mcp[cli]" flask transformers torch pydantic
+    - also installed mlx-lm (Apple open souce ML framework)
 
 ## Setup of Docker container to then run images of compiled code
 
