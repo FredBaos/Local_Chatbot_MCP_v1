@@ -53,6 +53,13 @@ main {
   letter-spacing: 0.04em;
 }
 
+.model-subtitle {
+  margin: 0.35rem 0 0;
+  color: #a8a8a8;
+  font-size: 0.9rem;
+  letter-spacing: 0.03em;
+}
+
 .new-chat-btn {
   background: rgba(123, 88, 229, 0.12);
   color: #ffffff;
@@ -75,7 +82,14 @@ main {
   gap: 10px;
 }
 
+.tab-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .tab {
+  flex: 1;
   background: rgba(255, 255, 255, 0.04);
   color: #d9d9d9;
   border: 1px solid transparent;
@@ -94,6 +108,32 @@ main {
 
 .tab:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.tab-delete-toggle,
+.tab-delete-confirm {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #8f8f8f;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+
+.tab-delete-toggle:hover,
+.tab-delete-confirm:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.tab-delete-confirm {
+  color: #ff7a7a;
 }
 
 
