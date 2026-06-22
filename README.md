@@ -21,15 +21,10 @@
 - tests folder containing tests files such as test_db to test implementation
 
 [ User Sends Message ]
-         │
-         ├──► 1. Query SQLite (Get last 10 messages from ONLY this chat_session_xyz)
-         ├──► 2. Query ChromaDB (Vector scan ALL historical chats for matching topics)
-         │
-         ▼
- 3. Assemble Prompt: [Chroma Context] + [SQLite 10-Msg Window] + [New Question]
-         │
-         ▼
- 4. Run model ──► Stream AI Response ──► Save everything back to SQLite & ChromaDB
+1. Query SQLite (Get last 10 messages from ONLY this chat_session_xyz)
+2. Query ChromaDB (Vector scan ALL historical chats for matching topics)
+3. Assemble Prompt: [Chroma Context] + [SQLite 10-Msg Window] + [New Question]
+4. Run model ──► Stream AI Response ──► Save everything back to SQLite & ChromaDB
 
 | User Scenario | SQLite Action (Short-Term) | ChromaDB Action (Long-Term) | What the User Experiences |
 | :--- | :--- | :--- | :--- |
@@ -46,8 +41,6 @@ TODO
 - create some knowledge or documentation and add the below + pdf from drive
 RAG : Chunking -> vectorize with embeddings in vector DB, then you can query it to retrieve relevant chunks from DB. also check interest of citation tracking and metadata usage. 
 
-- keep chatbot state in some (vector) DB? 
-- enable context as each input to model independent
 - check for optimal folder structure to have MCP RAG Vector DB etc.
 - connect model to internet and create a vector db with news (TLDR) articles about AI and Tech and then use RAG
 - other vector DB about cars specs
