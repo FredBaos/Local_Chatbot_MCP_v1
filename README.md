@@ -40,7 +40,6 @@ TODO
 
 - create some knowledge or documentation and add the below + pdf from drive
 RAG : Chunking -> vectorize with embeddings in vector DB, then you can query it to retrieve relevant chunks from DB. also check interest of citation tracking and metadata usage. 
-
 - check for optimal folder structure to have MCP RAG Vector DB etc.
 - connect model to internet and create a vector db with news (TLDR) articles about AI and Tech and then use RAG
 - other vector DB about cars specs
@@ -48,6 +47,7 @@ RAG : Chunking -> vectorize with embeddings in vector DB, then you can query it 
 - include some RAG capabilities
 - study MCP question and understand concrete applications
 - check multi-agents systems: Langchain & crewai
+- use gitingest.com and some LLM to generate a nice documentation (Gemini output) once RAG and MCP and multiagent added
 
 ## Other ideas of things to do
 
