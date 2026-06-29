@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 from mlx_lm import load, generate
 import mlx.core as mx
-import sys, os
+import sys, os, csv
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from rag_engine.storage.database import (
@@ -15,6 +15,8 @@ from rag_engine.storage.chroma_memory import (
     add_memory,
     retrieve_memory,
 )
+# Import the new external reference knowledge layer
+from rag_engine.storage.chroma_knowledge import query_knowledge
 
 app = Flask(__name__)
 init_db()
@@ -27,7 +29,7 @@ MODEL_DISPLAY_NAME = MODEL_NAME.split("/")[-1]
 MODEL_PARAMETER_LABEL = "≈3B params (4-bit quantized)"
 RECENT_MESSAGE_WINDOW = 10
 LONG_TERM_MEMORY_LIMIT = 5
-
+EXTERNAL_KNOWLEDGE_LIMIT = 2
 
 @app.route('/')
 def home():
@@ -69,24 +71,44 @@ def analyze():
         return jsonify({"error": "No text provided"}), 400
 
     try:
-        # SQLite short-term flow for the active session.
+        # 1. SQLite short-term conversational context flow
         recent_history = get_session_history(
             session_id,
             limit=RECENT_MESSAGE_WINDOW,
         )
 
-        # Chroma long-term recall should happen before the current turn is added.
+        # 2. Chroma long-term chat cross-talk retrieval
         retrieved_facts = retrieve_memory(
             user_text,
             limit=LONG_TERM_MEMORY_LIMIT,
             exclude_session_id=session_id,
         )
+        
+        # 3. New external knowledge document stores retrieval
+        news_context = query_knowledge(collection_name="tech_news", query_text=user_text, limit=EXTERNAL_KNOWLEDGE_LIMIT)
+        specs_context = query_knowledge(collection_name="car_specs", query_text=user_text, limit=EXTERNAL_KNOWLEDGE_LIMIT)
+
+        # Build prompt structural segments cleanly
         context_parts = []
+        
+        if news_context:
+            context_parts.append(
+                "External Tech News Articles:\n"
+                + "\n".join(f"- {item['text']} (Source: {item['metadata'].get('title', 'Web Document')})" for item in news_context)
+            )
+            
+        if specs_context:
+            context_parts.append(
+                "External Tabular Specifications:\n"
+                + "\n".join(f"- {item['text']}" for item in specs_context)
+            )
+
         if retrieved_facts:
             context_parts.append(
                 "Long-term memory from other chats:\n"
                 + "\n".join(f"- {item['text']}" for item in retrieved_facts)
             )
+            
         if recent_history:
             context_parts.append(
                 "Recent chat flow:\n"
@@ -128,11 +150,12 @@ def analyze():
             verbose=False,
         )
 
-        # Save the full turn after the model has responded.
+        # Save context references and outputs after model verification loop
         save_message(session_id, "user", user_text)
         save_message(session_id, "assistant", ai_response)
         add_memory(session_id, "user", user_text)
         add_memory(session_id, "assistant", ai_response)
+        
         return ai_response.strip()
 
     except Exception as e:
