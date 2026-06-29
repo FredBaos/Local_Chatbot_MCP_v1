@@ -8,29 +8,45 @@
 - brew installed as package manager on Mac
 - Orbstack installed for docker containers management
 
-## Setup of python, Jupyter and venv
+## Setup of Python, Virtual Environments, and Storage
 
-- UV used for python venvs (installed with brew)
-    - uv init
-    - source .venv/bin/activate
-    - (deactivate)
-- Some packages installed
-    - uv pip install "mcp[cli]" flask transformers torch pydantic
-    - also installed mlx-lm (Apple open souce ML framework)
-- SQLite database  as app's Short-Term Memory (Truth Layer), ChromaDB (Vector DB) as Long-Term Memory (Association Layer)
-- tests folder containing tests files such as test_db to test implementation
+- **UV Integration** used for lightning-fast package and virtual environment management (installed via Homebrew):
+    - `uv venv --python 3.14`
+    - `source .venv/bin/activate`
+    - `deactivate`
+- **Core Dependencies Architecture**:
+    - App server & tools: `uv pip install "mcp[cli]" flask flask-cors pydantic numpy`
+    - Local Computation & Vector store: `uv pip install mlx-lm chromadb`
+- **Multi-Tiered Data & Knowledge Architecture**:
+    - **SQLite Database**: Serves as the application's **Short-Term Memory (Truth Layer)** tracking real-time conversations per session.
+    - **ChromaDB (Vector DB)**: Operates both as the **Long-Term Memory (Association Layer)** for past chat records and as a **Reference Knowledge Layer** separating custom data ingestions into distinct collections:
+        - `chroma_memory`: Dedicated to semantic matching of cross-chat historical prompts.
+        - `tech_news`: Dedicated unstructured collection for scraped web data and technical documentation summaries.
+        - `car_specs`: Dedicated structured collection capturing tabular data narrative segments.
 
-[ User Sends Message ]
-1. Query SQLite (Get last 10 messages from ONLY this chat_session_xyz)
-2. Query ChromaDB (Vector scan ALL historical chats for matching topics)
-3. Assemble Prompt: [Chroma Context] + [SQLite 10-Msg Window] + [New Question]
-4. Run model ──► Stream AI Response ──► Save everything back to SQLite & ChromaDB
+## Data Flow & Context Pipeline
 
-| User Scenario | SQLite Action (Short-Term) | ChromaDB Action (Long-Term) | What the User Experiences |
-| :--- | :--- | :--- | :--- |
-| **Active Back-and-Forth Chatting** | Provides the last 10 lines of the ongoing topic to keep immediate context. | Returns low relevance scores; no external context is injected. | Fast, highly coherent tracking of the immediate conversation stream. |
-| **Continuing a Deep Chat (Message 50+)** | Pulls messages 40–49 to maintain local paragraph and pronoun continuity. | Fetches core project configurations or rules discussed back in messages 1–10. | Seamless tracking. The assistant remembers project boundaries even though raw text drifted out of the sliding window. |
-| **Opening a Brand New Chat Tab** | Returns 0 messages, establishing a completely clean conversation slate. | Scans across all historical chat sessions and extracts semantically matching records. | **Cross-chat memory.** The assistant instantly recalls relevant ideas or parameters established in old, closed chat threads. |
+```text
+                     [ User Sends Message ]
+                                │
+       ┌────────────────────────┼────────────────────────┐
+       ▼                        ▼                        ▼
+[ Short-Term Memory ]  [ Cross-Chat Memory ]   [ Reference Knowledge ]
+  SQLite DB Query        ChromaDB: memory        ChromaDB: tech_news / car_specs
+(Get last 10 messages  (Scan chat history for   (Retrieve unstructured articles 
+ from current session)    matching topics)        & structured narrative facts)
+       │                        │                        │
+       └────────────────────────┼────────────────────────┘
+                                ▼
+                       [ Assemble Prompt ]
+     [Knowledge Context] + [Memory Context] + [SQLite Window] + [Question]
+                                │
+                                ▼
+                     [ Run Model Inference ]
+                ──► Stream AI Local Response
+                ──► Save raw exchange to SQLite (Short-Term)
+                ──► Index prompt/response embedding to ChromaDB (Long-Term)
+```
 
 ## Setup of Docker container to then run images of compiled code
 
