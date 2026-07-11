@@ -2,17 +2,17 @@ import os
 import uuid
 
 import chromadb
-from chromadb.config import Settings
 
 CHROMA_PATH = os.path.join(os.path.dirname(__file__), "chroma_db")
 COLLECTION_NAME = "chat_memory"
+_CHROMA_CLIENT = None
 
 
 def get_chroma_client():
-    return chromadb.PersistentClient(
-        path=CHROMA_PATH,
-        settings=Settings(allow_reset=True, anonymized_telemetry=False),
-    )
+    global _CHROMA_CLIENT
+    if _CHROMA_CLIENT is None:
+        _CHROMA_CLIENT = chromadb.PersistentClient(path=CHROMA_PATH)
+    return _CHROMA_CLIENT
 
 
 def get_memory_collection():

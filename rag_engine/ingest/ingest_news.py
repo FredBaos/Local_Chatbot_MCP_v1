@@ -2,9 +2,8 @@ import os
 import hashlib
 import requests
 from bs4 import BeautifulSoup
-import chromadb
 
-CHROMA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "storage", "chroma_db")
+from rag_engine.storage.chroma_memory import get_chroma_client
 
 def chunk_text(text: str, chunk_size: int = 600, overlap: int = 60):
     """Chunks text into consistent lengths with a sliding character overlap."""
@@ -38,7 +37,7 @@ def ingest_web_article(url: str):
     text_chunks = chunk_text(article_text)
     
     # Connect to local ChromaDB
-    client = chromadb.PersistentClient(path=CHROMA_PATH)
+    client = get_chroma_client()
     collection = client.get_or_create_collection(name="tech_news")
     
     documents = []
