@@ -13,10 +13,12 @@ from rag_engine.storage.database import (
 )
 from rag_engine.storage.chroma_memory import (
     add_memory,
+    delete_session_memory,
     retrieve_memory,
 )
 # Import the new external reference knowledge layer
 from rag_engine.storage.chroma_knowledge import query_knowledge
+from rag_engine.utils.rag_support import get_rag_setup_context
 
 app = Flask(__name__)
 init_db()
@@ -58,7 +60,12 @@ def history(session_id):
 @app.route('/delete-session/<session_id>', methods=['DELETE'])
 def delete_session(session_id):
     delete_session_history(session_id)
-    return jsonify({"success": True, "session_id": session_id})
+    deleted_memory_count = delete_session_memory(session_id)
+    return jsonify({
+        "success": True,
+        "session_id": session_id,
+        "deleted_memory_count": deleted_memory_count,
+    })
 
 
 @app.route('/analyze', methods=['POST'])
@@ -90,6 +97,13 @@ def analyze():
 
         # Build prompt structural segments cleanly
         context_parts = []
+
+        rag_setup_context = get_rag_setup_context(user_text)
+        if rag_setup_context:
+            context_parts.append(
+                "RAG setup guidance:\n"
+                + rag_setup_context
+            )
         
         if news_context:
             context_parts.append(

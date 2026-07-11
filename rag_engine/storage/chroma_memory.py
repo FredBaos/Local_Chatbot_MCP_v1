@@ -41,6 +41,15 @@ def add_memory(session_id: str, role: str, content: str):
     )
 
 
+def delete_session_memory(session_id: str) -> int:
+    collection = get_memory_collection()
+    results = collection.get(where={"session_id": session_id}, include=["metadatas"])
+    ids = results.get("ids", []) or []
+    if ids:
+        collection.delete(ids=ids)
+    return len(ids)
+
+
 def retrieve_memory(query: str, limit: int = 5, exclude_session_id: str = None):
     collection = get_memory_collection()
     results = collection.query(
