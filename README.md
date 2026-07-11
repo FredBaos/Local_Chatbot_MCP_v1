@@ -22,7 +22,7 @@
     - **ChromaDB (Vector DB)**: Operates both as the **Long-Term Memory (Association Layer)** for past chat records and as a **Reference Knowledge Layer** separating custom data ingestions into distinct collections:
         - `chroma_memory`: Dedicated to semantic matching of cross-chat historical prompts.
         - `tech_news`: Dedicated unstructured collection for scraped web data and technical documentation summaries.
-        - `car_specs`: Dedicated structured collection capturing tabular data narrative segments.
+        - `car_specs`: Dedicated structured collection capturing tabular data narrative segments, source is [Kaggle Vehicle dataset](https://www.kaggle.com/datasets/nehalbirla/vehicle-dataset-from-cardekho)
 
 ## Data Flow & Context Pipeline
 

@@ -29,6 +29,9 @@ rag_engine/storage/chat_history.db
 *.pkl
 *.pickle
 
+# Local data files
+rag_engine/storage/data/
+
 # Local LLM Weights, Safetensors & Model Directories
 # (Keeps Hugging Face / MLX local caching artifacts out of GitHub)
 *.bin
