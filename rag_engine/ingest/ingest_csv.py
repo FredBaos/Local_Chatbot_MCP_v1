@@ -1,8 +1,7 @@
 import os
 import csv
-import chromadb
 
-CHROMA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "storage", "chroma_db")
+from rag_engine.storage.chroma_memory import get_chroma_client
 
 def ingest_structured_csv(file_path: str, collection_name: str = "car_specs"):
     """
@@ -13,7 +12,7 @@ def ingest_structured_csv(file_path: str, collection_name: str = "car_specs"):
         print(f"[-] Data file not found at: {file_path}")
         return
         
-    client = chromadb.PersistentClient(path=CHROMA_PATH)
+    client = get_chroma_client()
     collection = client.get_or_create_collection(name=collection_name)
     
     documents = []
