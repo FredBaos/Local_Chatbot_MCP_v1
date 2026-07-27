@@ -40,7 +40,16 @@ def get_session_history(session_id, limit=1000):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT role, content FROM messages WHERE session_id = ? ORDER BY id ASC LIMIT ?",
+        """
+        SELECT role, content FROM (
+            SELECT role, content, id
+            FROM messages
+            WHERE session_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+        )
+        ORDER BY id ASC
+        """,
         (session_id, limit),
     )
     rows = cursor.fetchall()
@@ -53,7 +62,15 @@ def get_recent_global_history(limit=1000):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT session_id, role, content FROM messages ORDER BY id ASC LIMIT ?",
+        """
+        SELECT session_id, role, content FROM (
+            SELECT session_id, role, content, id
+            FROM messages
+            ORDER BY id DESC
+            LIMIT ?
+        )
+        ORDER BY id ASC
+        """,
         (limit,),
     )
     rows = cursor.fetchall()
