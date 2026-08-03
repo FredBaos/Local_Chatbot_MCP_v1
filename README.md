@@ -65,6 +65,20 @@ RAG : Chunking -> vectorize with embeddings in vector DB, then you can query it 
 - check multi-agents systems: Langchain & crewai
 - use gitingest.com and some LLM to generate a nice documentation (Gemini output) once RAG and MCP and multiagent added
 
+## Planned Improvements
+
+| Priority | Change | Why |
+| --- | --- | --- |
+| High | Add Chroma distance threshold before injecting RAG/memory | Stops irrelevant context pollution |
+| High | Sync `pyproject.toml` with real deps | Reproducible setup |
+| Medium | Use real chat turns in `apply_chat_template()` | Better model behavior |
+| Medium | Add streaming to `/analyze` | Matches README, better UX |
+| Medium | Pair user+assistant in long-term memory | Better cross-chat recall |
+| Low | Deduplicate news ingest | Avoid vector DB bloat |
+| Low | Rename `chat_memory` → `chroma_memory` or update README | Consistency |
+| Future | Lazy-load MLX model | Faster startup, testable without GPU |
+| Future | Implement MCP server exposing RAG/memory tools | Matches project name and README vision |
+
 ## Other ideas of things to do
 
 - see to do some data engineering project, create some vector DB, check latest techs (dbt)
