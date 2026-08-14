@@ -28,12 +28,38 @@ from bs4 import BeautifulSoup
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from rag_engine.storage.chroma_knowledge import add_to_chroma
-from rag_engine.utils.rag_support import chunk_text
+from rag_engine.storage.chroma_knowledge import get_chroma_client
 
 
 # File to track processed email IDs
 PROCESSED_EMAILS_FILE = os.path.join(os.path.dirname(__file__), "..", "storage", "data", "processed_emails.json")
+
+
+def chunk_text(text: str, chunk_size: int = 500, chunk_overlap: int = 50) -> list[str]:
+    """
+    Split text into overlapping chunks.
+    
+    Args:
+        text: Text to chunk
+        chunk_size: Size of each chunk in characters
+        chunk_overlap: Overlap between chunks
+    
+    Returns:
+        List of text chunks
+    """
+    if not text or chunk_size <= 0:
+        return [text] if text else []
+    
+    chunks = []
+    start = 0
+    text_length = len(text)
+    
+    while start < text_length:
+        end = min(start + chunk_size, text_length)
+        chunks.append(text[start:end])
+        start = end - chunk_overlap if end < text_length else text_length
+    
+    return chunks
 
 
 def load_processed_emails() -> Set[str]:
@@ -353,8 +379,21 @@ def ingest_outlook_news(
         print("✗ No emails to process")
         return 0
     
+    # Get ChromaDB client and collection
+    client = get_chroma_client()
+    try:
+        collection = client.get_or_create_collection(name=collection_name)
+    except Exception as e:
+        print(f"✗ Error accessing collection '{collection_name}': {e}")
+        return 0
+    
     # Process and ingest emails
     total_ingested = 0
+    all_documents = []
+    all_metadatas = []
+    all_ids = []
+    email_counter = 0
+    
     for email_data in emails:
         subject = email_data["subject"]
         date = email_data["date"]
@@ -367,33 +406,40 @@ def ingest_outlook_news(
         # Chunk the content
         chunks = chunk_text(document, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         
-        # Add to ChromaDB
-        try:
-            for i, chunk in enumerate(chunks):
-                metadata = {
-                    "source": "outlook_email",
-                    "sender": sender,
-                    "subject": subject,
-                    "date": date,
-                    "chunk_index": i,
-                    "total_chunks": len(chunks),
-                }
-                
-                add_to_chroma(
-                    documents=[chunk],
-                    metadatas=[metadata],
-                    collection_name=collection_name,
-                )
+        # Add chunks to batch
+        for i, chunk in enumerate(chunks):
+            metadata = {
+                "source": "outlook_email",
+                "sender": sender,
+                "subject": subject,
+                "date": date,
+                "chunk_index": i,
+                "total_chunks": len(chunks),
+            }
             
-            total_ingested += len(chunks)
-            print(f"✓ Ingested {len(chunks)} chunks from: {subject}")
-        except Exception as e:
-            print(f"✗ Error ingesting {subject}: {e}")
+            all_documents.append(chunk)
+            all_metadatas.append(metadata)
+            all_ids.append(f"outlook_email_{email_counter}_{i}")
+        
+        email_counter += 1
+        total_ingested += len(chunks)
+        print(f"✓ Prepared {len(chunks)} chunks from: {subject}")
     
-    print(f"\n{'='*60}")
-    print(f"✓ Successfully ingested {total_ingested} chunks")
-    print(f"✓ Collection: '{collection_name}'")
-    print(f"{'='*60}\n")
+    # Batch add all documents to ChromaDB
+    if all_documents:
+        try:
+            collection.add(
+                documents=all_documents,
+                metadatas=all_metadatas,
+                ids=all_ids
+            )
+            print(f"\n{'='*60}")
+            print(f"✓ Successfully ingested {total_ingested} chunks")
+            print(f"✓ Collection: '{collection_name}'")
+            print(f"{'='*60}\n")
+        except Exception as e:
+            print(f"✗ Error adding documents to ChromaDB: {e}")
+            total_ingested = 0
     
     # Save processed email IDs for next run (incremental ingestion)
     save_processed_emails(processed_ids)
