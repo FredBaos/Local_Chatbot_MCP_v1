@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response, stream_with_context
 from mlx_lm import load, generate
 import mlx.core as mx
 import sys, os, csv
@@ -13,6 +13,7 @@ from rag_engine.storage.database import (
 )
 from rag_engine.storage.chroma_memory import (
     add_memory,
+    add_paired_memory,
     delete_session_memory,
     retrieve_memory,
 )
@@ -95,43 +96,7 @@ def analyze():
         news_context = query_knowledge(collection_name="tech_news", query_text=user_text, limit=EXTERNAL_KNOWLEDGE_LIMIT)
         specs_context = query_knowledge(collection_name="car_specs", query_text=user_text, limit=EXTERNAL_KNOWLEDGE_LIMIT)
 
-        # Build prompt structural segments cleanly
-        context_parts = []
-
-        rag_setup_context = get_rag_setup_context(user_text)
-        if rag_setup_context:
-            context_parts.append(
-                "RAG setup guidance:\n"
-                + rag_setup_context
-            )
-        
-        if news_context:
-            context_parts.append(
-                "External Tech News Articles:\n"
-                + "\n".join(f"- {item['text']} (Source: {item['metadata'].get('title', 'Web Document')})" for item in news_context)
-            )
-            
-        if specs_context:
-            context_parts.append(
-                "External Tabular Specifications:\n"
-                + "\n".join(f"- {item['text']}" for item in specs_context)
-            )
-
-        if retrieved_facts:
-            context_parts.append(
-                "Long-term memory from other chats:\n"
-                + "\n".join(f"- {item['text']}" for item in retrieved_facts)
-            )
-            
-        if recent_history:
-            context_parts.append(
-                "Recent chat flow:\n"
-                + "\n".join(
-                    f"- {message['role']}: {message['content']}"
-                    for message in recent_history
-                )
-            )
-
+        # Build prompt messages using real chat turns for better behavior
         prompt_messages = [
             {
                 "role": "system",
@@ -140,36 +105,55 @@ def analyze():
                     "when it is relevant and do not claim memory unless the context supports it."
                 ),
             },
-            {
-                "role": "user",
-                "content": (
-                    ("\n\n".join(context_parts) if context_parts else "")
-                    + ("\n\n" if context_parts else "")
-                    + f"Question: {user_text}"
-                ),
-            },
         ]
 
-        prompt = tokenizer.apply_chat_template(
-            prompt_messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        # Add RAG setup and external knowledge as system-level context blocks
+        rag_setup_context = get_rag_setup_context(user_text)
+        if rag_setup_context:
+            prompt_messages.append({"role": "system", "content": "RAG setup guidance:\n" + rag_setup_context})
 
-        ai_response = generate(
-            model,
-            tokenizer,
-            prompt=prompt,
-            max_tokens=512,
-            verbose=False,
-        )
+        if news_context:
+            prompt_messages.append({
+                "role": "system",
+                "content": "External Tech News Articles:\n" + "\n".join(f"- {item['text']} (Source: {item['metadata'].get('title', 'Web Document')})" for item in news_context),
+            })
+
+        if specs_context:
+            prompt_messages.append({"role": "system", "content": "External Tabular Specifications:\n" + "\n".join(f"- {item['text']}" for item in specs_context)})
+
+        # Append recent chat history as real turn messages
+        if recent_history:
+            for message in recent_history:
+                # Ensure roles are familiar to the tokenizer (user/assistant/system)
+                role = message.get("role", "user")
+                prompt_messages.append({"role": role, "content": message.get("content", "")})
+
+        # Add long-term retrieved facts as system hints (already filtered by threshold)
+        if retrieved_facts:
+            prompt_messages.append({"role": "system", "content": "Long-term memory from other chats:\n" + "\n".join(f"- {item['text']}" for item in retrieved_facts)})
+
+        # Finally, append the current user question as the active user turn
+        prompt_messages.append({"role": "user", "content": f"Question: {user_text}"})
+
+        prompt = tokenizer.apply_chat_template(prompt_messages, tokenize=False, add_generation_prompt=True)
+
+        ai_response = generate(model, tokenizer, prompt=prompt, max_tokens=512, verbose=False)
 
         # Save context references and outputs after model verification loop
         save_message(session_id, "user", user_text)
         save_message(session_id, "assistant", ai_response)
-        add_memory(session_id, "user", user_text)
-        add_memory(session_id, "assistant", ai_response)
-        
+
+        # Persist paired memory (single document) for better association
+        add_paired_memory(session_id, user_text, ai_response)
+
+        # Streaming support: if client requests streaming, return a generator response
+        if data.get("stream"):
+            def generate_stream(text: str, chunk_size: int = 256):
+                for i in range(0, len(text), chunk_size):
+                    yield text[i : i + chunk_size]
+
+            return Response(stream_with_context(generate_stream(ai_response)), mimetype="text/plain")
+
         return ai_response.strip()
 
     except Exception as e:
