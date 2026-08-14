@@ -116,12 +116,38 @@ def get_imap_connection(email_address: str, password: str, server: str = "outloo
         Connected IMAP4_SSL object or None if connection fails
     """
     try:
-        mail = imaplib.IMAP4_SSL(server, port)
+        print(f"🔗 Connecting to {server}:{port}...")
+        mail = imaplib.IMAP4_SSL(server, port, timeout=15)
+        print(f"✓ SSL connection established")
+        
+        print(f"🔑 Attempting login with {email_address}...")
         mail.login(email_address, password)
-        print(f"✓ Connected to {server}")
+        print(f"✓ Authentication successful")
         return mail
     except imaplib.IMAP4.error as e:
-        print(f"✗ Failed to connect to {server}: {e}")
+        error_msg = str(e)
+        print(f"✗ IMAP authentication failed: {error_msg}")
+        
+        # Provide diagnostics
+        if "AUTHENTICATIONFAILED" in error_msg.upper():
+            print("\n⚠ Authentication failed. Check:")
+            print("  • Are you using an app-specific password (not your regular password)?")
+            print("  • Is two-factor authentication (2FA) enabled on your Outlook account?")
+            print("  • Is IMAP enabled in Outlook settings (Account > App passwords)?")
+            print("  • For Office 365/Outlook.com, use an app-specific password")
+        elif "NO" in error_msg:
+            print("\n⚠ Login credentials rejected by server")
+            print("  • Check that email and password are correct")
+            print("  • Verify the account hasn't been temporarily locked")
+        
+        return None
+    except TimeoutError:
+        print(f"✗ Connection timeout to {server}:{port}")
+        print("  • Check your internet connection")
+        print("  • Verify the server is reachable")
+        return None
+    except Exception as e:
+        print(f"✗ Connection error: {type(e).__name__}: {e}")
         return None
 
 
@@ -139,16 +165,30 @@ def select_news_folder(mail: imaplib.IMAP4_SSL, folder_name: str = "News") -> bo
     try:
         status, mailbox_list = mail.list()
         if status == "OK":
-            print(f"Available folders: {[b.decode() for b in mailbox_list[:5]]}...")
+            available_folders = [b.decode() for b in mailbox_list]
+            print(f"\n📁 Available folders:")
+            for folder in available_folders[:10]:
+                print(f"   • {folder}")
+            if len(available_folders) > 10:
+                print(f"   ... and {len(available_folders) - 10} more")
         
+        # Try to select the specified folder
         status, _ = mail.select(f'"{folder_name}"')
         if status == "OK":
             print(f"✓ Selected '{folder_name}' folder")
             return True
-        else:
-            print(f"✗ Could not select '{folder_name}' folder. Trying 'INBOX' instead.")
-            mail.select("INBOX")
-            return False
+        
+        # If folder not found, try alternative names
+        print(f"⚠ '{folder_name}' folder not found. Trying alternatives...")
+        alternatives = ["[Gmail]/All Mail", "All Mail", "Inbox", "[Gmail]/Important"]
+        for alt_folder in alternatives:
+            status, _ = mail.select(f'"{alt_folder}"')
+            if status == "OK":
+                print(f"✓ Selected '{alt_folder}' folder instead")
+                return True
+        
+        print(f"✗ Could not find or select any readable folder")
+        return False
     except Exception as e:
         print(f"✗ Error selecting folder: {e}")
         return False
@@ -325,56 +365,26 @@ def fetch_tldr_emails(
         return [], processed_ids
 
 
-def ingest_outlook_news(
-    email_address: str,
-    password: str,
-    folder_name: str = "News",
-    email_limit: int = 10,
-    chunk_size: int = 500,
-    chunk_overlap: int = 50,
-    collection_name: str = "tech_news",
+def _ingest_emails_to_chroma(
+    emails: list[dict],
+    collection_name: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    processed_ids: Set[str],
 ) -> int:
     """
-    Main function to ingest TLDR/tech news from Outlook into ChromaDB.
+    Helper function to ingest emails into ChromaDB.
     
     Args:
-        email_address: Outlook email address
-        password: Outlook password or app-specific password
-        folder_name: Folder to fetch emails from (default: 'News')
-        email_limit: Maximum emails to process (default: 10)
-        chunk_size: Size of text chunks (default: 500 characters)
-        chunk_overlap: Overlap between chunks (default: 50 characters)
-        collection_name: ChromaDB collection name (default: 'tech_news')
+        emails: List of email dicts with subject, date, sender, body
+        collection_name: ChromaDB collection name
+        chunk_size: Characters per chunk
+        chunk_overlap: Overlap between chunks
+        processed_ids: Set of already-processed IDs
     
     Returns:
-        Number of documents successfully ingested
+        Number of chunks ingested
     """
-    print(f"\n{'='*60}")
-    print("TLDR News Outlook Scraper")
-    print(f"{'='*60}\n")
-    
-    # Load previously processed emails
-    processed_ids = load_processed_emails()
-    print(f"📋 Found {len(processed_ids)} previously processed emails\n")
-    
-    # Connect to Outlook
-    mail = get_imap_connection(email_address, password)
-    if not mail:
-        return 0
-    
-    # Select News folder
-    select_news_folder(mail, folder_name)
-    
-    # Fetch emails (excluding already-processed ones)
-    emails, processed_ids = fetch_tldr_emails(
-        mail, 
-        limit=email_limit, 
-        sender_filter="",
-        processed_ids=processed_ids
-    )
-    mail.close()
-    mail.logout()
-    
     if not emails:
         print("✗ No emails to process")
         return 0
@@ -447,18 +457,122 @@ def ingest_outlook_news(
     return total_ingested
 
 
-if __name__ == "__main__":
-    # Prompt for email and password (secure input)
-    email_address = os.getenv("OUTLOOK_EMAIL")
+def ingest_outlook_news(
+    email_address: str,
+    password: str,
+    folder_name: str = "News",
+    email_limit: int = 20,
+    chunk_size: int = 500,
+    chunk_overlap: int = 50,
+    collection_name: str = "tech_news",
+    dry_run: bool = False,
+) -> int:
+    """
+    Main function to ingest TLDR/tech news from Outlook into ChromaDB.
     
-    if not email_address:
+    Args:
+        email_address: Outlook email address
+        password: Outlook password or app-specific password
+        folder_name: Folder to fetch emails from (default: 'News')
+        email_limit: Maximum emails to process (default: 20)
+        chunk_size: Size of text chunks (default: 500 characters)
+        chunk_overlap: Overlap between chunks (default: 50 characters)
+        collection_name: ChromaDB collection name (default: 'tech_news')
+        dry_run: Test mode - shows what would happen without real auth (default: False)
+    
+    Returns:
+        Number of documents successfully ingested
+    """
+    print(f"\n{'='*60}")
+    print("📰 TLDR News Outlook Scraper")
+    print(f"{'='*60}\n")
+    
+    if dry_run:
+        print("🧪 DRY-RUN MODE - Testing without authentication")
+        print("   This demonstrates the pipeline without connecting to Outlook\n")
+        
+        # Demo: Create sample emails
+        sample_emails = [
+            {
+                "subject": "[TLDR] Tech News #1: AI Breakthroughs",
+                "date": "2026-08-14",
+                "sender": "tldr@tldr.com",
+                "body": "Today's top AI stories: New transformer architecture released...",
+            },
+            {
+                "subject": "[TLDR] Tech News #2: Cloud Developments",
+                "date": "2026-08-13",
+                "sender": "tldr@tldr.com",
+                "body": "Cloud infrastructure updates: Kubernetes 2.0 announced...",
+            },
+        ]
+        
+        return _ingest_emails_to_chroma(
+            sample_emails,
+            collection_name,
+            chunk_size,
+            chunk_overlap,
+            load_processed_emails(),  # Still track processed emails
+        )
+    
+    # Real authentication mode
+    print(f"🔒 Securing connection to Outlook...")
+    print("   (Password will be prompted securely)\n")
+    
+    # Load previously processed emails
+    processed_ids = load_processed_emails()
+    print(f"📋 Found {len(processed_ids)} previously processed emails\n")
+    
+    # Connect to Outlook
+    mail = get_imap_connection(email_address, password)
+    if not mail:
+        return 0
+    
+    # Select News folder
+    select_news_folder(mail, folder_name)
+    
+    # Fetch emails (excluding already-processed ones)
+    emails, processed_ids = fetch_tldr_emails(
+        mail, 
+        limit=email_limit, 
+        sender_filter="",
+        processed_ids=processed_ids
+    )
+    mail.close()
+    mail.logout()
+    
+    # Use helper function to ingest emails into ChromaDB
+    return _ingest_emails_to_chroma(
+        emails,
+        collection_name,
+        chunk_size,
+        chunk_overlap,
+        processed_ids,
+    )
+
+
+if __name__ == "__main__":
+    import sys
+    
+    # Check for dry-run flag
+    dry_run = "--dry-run" in sys.argv or "-d" in sys.argv
+    
+    # Prompt for email and password (secure input)
+    email_address = os.getenv("OUTLOOK_EMAIL") if not dry_run else "demo@outlook.com"
+    
+    if not email_address and not dry_run:
         email_address = input("📧 Enter your Outlook email address: ").strip()
     
-    password = getpass.getpass("🔑 Enter your Outlook password or app-specific password: ")
-    
-    if not email_address or not password:
-        print("✗ Email and password are required")
-        sys.exit(1)
+    if dry_run:
+        print("\n🧪 DRY-RUN MODE activated")
+        print("   This will test the ingestion pipeline with sample data\n")
+        password = ""  # Not needed for dry-run
+    else:
+        password = getpass.getpass("🔑 Enter your Outlook password or app-specific password: ")
+        
+        if not email_address or not password:
+            print("✗ Email and password are required")
+            sys.exit(1)
     
     ingest_outlook_news(
         email_address=email_address,
@@ -467,4 +581,5 @@ if __name__ == "__main__":
         email_limit=20,  # Fetch more emails to handle incremental updates
         chunk_size=500,
         chunk_overlap=50,
+        dry_run=dry_run,
     )
