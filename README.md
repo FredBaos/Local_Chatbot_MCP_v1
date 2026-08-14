@@ -20,7 +20,7 @@
 - **Multi-Tiered Data & Knowledge Architecture**:
     - **SQLite Database**: Serves as the application's **Short-Term Memory (Truth Layer)** tracking real-time conversations per session.
     - **ChromaDB (Vector DB)**: Operates both as the **Long-Term Memory (Association Layer)** for past chat records and as a **Reference Knowledge Layer** separating custom data ingestions into distinct collections:
-        - `chroma_memory`: Dedicated to semantic matching of cross-chat historical prompts.
+        - `chat_memory` (collection name `chat_memory`): Dedicated to semantic matching of cross-chat historical prompts (collection used in code is named `chat_memory`).
         - `tech_news`: Dedicated unstructured collection for scraped web data and technical documentation summaries.
         - `car_specs`: Dedicated structured collection capturing tabular data narrative segments, source is [Kaggle Vehicle dataset](https://www.kaggle.com/datasets/nehalbirla/vehicle-dataset-from-cardekho)
 
@@ -80,5 +80,10 @@ RAG : Chunking -> vectorize with embeddings in vector DB, then you can query it 
 | Future | Implement MCP server exposing RAG/memory tools | Matches project name and README vision |
 
 ## Other ideas of things to do
+
+Notes
+
+- `CHROMA_DISTANCE_THRESHOLD`: an optional environment variable (`CHROMA_DISTANCE_THRESHOLD`) can be set to a float (for example `0.35`) to filter Chroma query results by distance before injecting RAG/memory into prompts. Lower distance indicates higher similarity for the configured index (`hnsw:space` is set to `cosine`). If unset, no distance filtering is applied.
+
 
 - see to do some data engineering project, create some vector DB, check latest techs (dbt)
