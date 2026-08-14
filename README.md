@@ -64,16 +64,39 @@ The `rag_engine/ingest/` directory contains modular pipelines for populating Chr
 
 **Security:** Password is prompted interactively using `getpass` — **never stored in config files or logs**.
 
-**Basic Usage:**
+**Quick Test (Dry-Run Mode):**
+
+Test the pipeline without Outlook credentials:
 ```bash
 cd /Users/fredericmyotte/Documents/Projects/Local_Chatbot_MCP_v1
 source .venv/bin/activate
+python -m rag_engine.ingest.ingest_outlook_news --dry-run
+```
+
+This demonstrates the full ingestion pipeline with sample emails, verifying:
+- ✅ ChromaDB connection works
+- ✅ Email chunking logic works
+- ✅ Document ingestion to `tech_news` collection works
+- ✅ Processed email tracking initializes correctly
+
+**Real Usage (With Outlook Credentials):**
+```bash
 python -m rag_engine.ingest.ingest_outlook_news
 ```
 
 You'll be prompted for:
 1. Outlook email address (or set `OUTLOOK_EMAIL` env var to skip prompt)
 2. Password (via secure prompt — not echoed to terminal)
+
+**Troubleshooting Authentication Errors:**
+
+If you get `AUTHENTICATIONFAILED` errors:
+1. ✅ Use an **app-specific password**, not your regular Outlook password
+   - Go to Outlook.com → Settings → Account → Security
+   - Create an app-specific password for IMAP
+2. ✅ Ensure **IMAP is enabled** on your account
+3. ✅ Check if **two-factor authentication** is enabled (requires app password)
+4. ✅ Verify your account hasn't been temporarily locked
 
 **Incremental Updates (Process Only New Emails):**
 
