@@ -1,5 +1,6 @@
 import os
 import uuid
+from typing import Any
 
 import chromadb
 
@@ -7,8 +8,16 @@ CHROMA_PATH = os.path.join(os.path.dirname(__file__), "chroma_db")
 COLLECTION_NAME = "chat_memory"
 _CHROMA_CLIENT = None
 
+# Configurable distance threshold (can be set with environment variable).
+# If unset, no distance-based filtering will be applied.
+_env_threshold = os.environ.get("CHROMA_DISTANCE_THRESHOLD")
+try:
+    CHROMA_DISTANCE_THRESHOLD: float | None = float(_env_threshold) if _env_threshold is not None else None
+except Exception:
+    CHROMA_DISTANCE_THRESHOLD = None
 
-def get_chroma_client():
+
+def get_chroma_client() -> Any:
     global _CHROMA_CLIENT
     if _CHROMA_CLIENT is None:
         _CHROMA_CLIENT = chromadb.PersistentClient(path=CHROMA_PATH)
@@ -50,30 +59,52 @@ def delete_session_memory(session_id: str) -> int:
     return len(ids)
 
 
-def retrieve_memory(query: str, limit: int = 5, exclude_session_id: str = None):
+def retrieve_memory(query: str, limit: int = 5, exclude_session_id: str = None, distance_threshold: float | None = None):
+    """
+    Retrieve semantically-similar long-term memory entries from Chroma.
+
+    - `distance_threshold` (float) if provided will filter out results whose
+      returned distance is greater than the threshold. If omitted, the
+      environment-level `CHROMA_DISTANCE_THRESHOLD` will be used. If neither
+      is set, no distance filtering is applied.
+    """
     collection = get_memory_collection()
+    # Query for a larger set and filter/limit locally to reduce false positives
     results = collection.query(
         query_texts=[query],
         n_results=max(limit * 4, 12),
+        include=["documents", "metadatas", "ids", "distances"],
     )
+
     docs = results.get("documents", [[]])[0]
     metas = results.get("metadatas", [[]])[0]
+    distances = results.get("distances", [[]])[0]
+
+    effective_threshold = distance_threshold if distance_threshold is not None else CHROMA_DISTANCE_THRESHOLD
 
     seen = set()
     filtered = []
     normalized_query = query.strip()
-    for doc, meta in zip(docs, metas):
+    for doc, meta, dist in zip(docs, metas, distances):
         if not doc:
             continue
         if exclude_session_id and meta and meta.get("session_id") == exclude_session_id:
             continue
 
+        # If a threshold is configured, drop items with distance greater than it
+        if effective_threshold is not None:
+            try:
+                if dist is None or float(dist) > float(effective_threshold):
+                    continue
+            except Exception:
+                # If distance parsing fails, skip distance filtering conservatively
+                pass
+
         normalized = doc.strip()
         if normalized in seen:
             continue
 
-        # Ignore exact copies of the current user query, even if the payload is
-        # stored as plain text or with role tags in the embedding content.
+        # Ignore exact copies of the current user query
         if normalized.casefold() == normalized_query.casefold():
             continue
 

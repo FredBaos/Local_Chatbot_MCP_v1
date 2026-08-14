@@ -69,8 +69,8 @@ RAG : Chunking -> vectorize with embeddings in vector DB, then you can query it 
 
 | Priority | Change | Why |
 | --- | --- | --- |
-| High | Add Chroma distance threshold before injecting RAG/memory | Stops irrelevant context pollution |
-| High | Sync `pyproject.toml` with real deps | Reproducible setup |
+| High | Add Chroma distance threshold before injecting RAG/memory — DONE | Implemented `CHROMA_DISTANCE_THRESHOLD` (env var) and per-call filtering in `rag_engine/storage/chroma_memory.py` and `rag_engine/storage/chroma_knowledge.py` to avoid irrelevant injections. |
+| High | Sync `pyproject.toml` with real deps — DONE | Added `chromadb`, `mlx-lm`, `pydantic`, and `mcp` to `pyproject.toml` to better reflect runtime/test requirements. |
 | Medium | Use real chat turns in `apply_chat_template()` | Better model behavior |
 | Medium | Add streaming to `/analyze` | Matches README, better UX |
 | Medium | Pair user+assistant in long-term memory | Better cross-chat recall |
