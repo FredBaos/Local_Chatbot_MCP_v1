@@ -50,6 +50,27 @@ def add_memory(session_id: str, role: str, content: str):
     )
 
 
+def add_paired_memory(session_id: str, user_text: str, assistant_text: str):
+    """
+    Store a paired user+assistant exchange as a single long-term memory entry.
+
+    This helps the vector DB associate user prompts with the assistant reply
+    as a single semantic unit for future retrieval.
+    """
+    collection = get_memory_collection()
+    combined = f"User: {user_text.strip()}\nAssistant: {assistant_text.strip()}"
+    if not combined.strip():
+        return
+    stable_id = str(
+        uuid.uuid5(
+            uuid.NAMESPACE_DNS,
+            f"{session_id}|paired|{combined}",
+        )
+    )
+    metadata = {"session_id": session_id, "paired": True}
+    collection.upsert(documents=[combined], metadatas=[metadata], ids=[stable_id])
+
+
 def delete_session_memory(session_id: str) -> int:
     collection = get_memory_collection()
     results = collection.get(where={"session_id": session_id}, include=["metadatas"])
