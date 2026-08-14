@@ -116,6 +116,14 @@ Modify the last section of `ingest_outlook_news.py` to change:
 >
 > **Example:** An MCP tool named `search_tech_news(query: str)` → calls ChromaDB, returns top-K relevant chunks with metadata. This decouples your RAG implementation from external consumers.
 
+### 🔌 Local MCP Server Features
+
+Our local FastMCP server (`mcp_servers/knowledge_mcp_server.py`) exposes unified tool endpoints over stdio for external AI agents (Claude Desktop, VS Code, Cursor):
+
+* **`search_tech_news(query)`**: On-demand semantic vector search across ingested newsletter archives (`tech_news` collection in ChromaDB).
+* **`search_car_specs(query)`**: Structured knowledge retrieval across technical specifications and datasets (`car_specs` collection).
+* **`search_chat_memory(query)`**: On-demand cross-chat memory retrieval (`chat_memory` collection), allowing external agents to query past conversation topics, user preferences, and historical session logs without context pollution.
+
 ## Other Things to Explore & Improve
 
 ### Currently Implemented ✅
