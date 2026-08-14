@@ -60,6 +60,62 @@ The `rag_engine/ingest/` directory contains modular pipelines for populating Chr
   - Enriches documents with metadata (sender, subject, date)
 - **`ingest_news.py`**: [Extensible for future news sources]
 
+### Using the Outlook News Scraper
+
+**Security:** Password is prompted interactively using `getpass` — **never stored in config files or logs**.
+
+**Basic Usage:**
+```bash
+cd /Users/fredericmyotte/Documents/Projects/Local_Chatbot_MCP_v1
+source .venv/bin/activate
+python -m rag_engine.ingest.ingest_outlook_news
+```
+
+You'll be prompted for:
+1. Outlook email address (or set `OUTLOOK_EMAIL` env var to skip prompt)
+2. Password (via secure prompt — not echoed to terminal)
+
+**Incremental Updates (Process Only New Emails):**
+
+The scraper automatically tracks processed emails in:
+```
+rag_engine/storage/data/processed_emails.json
+```
+
+On each run:
+- ✅ Previously ingested emails are **skipped** (marked by Message-ID or subject+date)
+- ✅ Only **new emails** are fetched and ingested
+- ✅ Processed email IDs are persisted for next run
+- ✅ You can safely run the scraper multiple times without duplicate ingestion
+
+**Example Workflow:**
+```bash
+# First run: Fetches last 20 emails, processes them
+python -m rag_engine.ingest.ingest_outlook_news
+# Output: ✓ Successfully ingested X chunks
+
+# Later: Run again after new TLDR emails arrive
+python -m rag_engine.ingest.ingest_outlook_news
+# Output: ⊘ Skipped N already-processed emails, ✓ Successfully ingested M new chunks
+```
+
+**Customization:**
+
+Modify the last section of `ingest_outlook_news.py` to change:
+- `email_limit`: Number of recent emails to check (default: 20)
+- `chunk_size`: Characters per chunk (default: 500)
+- `chunk_overlap`: Overlap between chunks (default: 50)
+
+## MCP Server for Vector DB Access
+
+> **Note on MCP + RAG Architecture:** RAG (Retrieval-Augmented Generation) and MCP (Model Context Protocol) serve complementary purposes. RAG is the **retrieval mechanism** (how you search and fetch relevant documents), while MCP is the **protocol/interface** (how other agents/services access your tools). Consider implementing a local MCP server that exposes the ChromaDB vector DB as a searchable resource — this would allow:
+> - External AI agents to query your `tech_news`, `car_specs`, and `chat_memory` collections
+> - Other tools/services in your ecosystem to access your knowledge base
+> - A common interface for multi-agent systems (e.g., CrewAI, AutoGPT)
+> - Future scaling to expose your RAG engine as a micro-service
+>
+> **Example:** An MCP tool named `search_tech_news(query: str)` → calls ChromaDB, returns top-K relevant chunks with metadata. This decouples your RAG implementation from external consumers.
+
 ## Other Things to Explore & Improve
 
 ### Currently Implemented ✅
@@ -93,7 +149,7 @@ The `rag_engine/ingest/` directory contains modular pipelines for populating Chr
 | --- | --- | --- | --- |
 | High | DONE | Add Chroma distance threshold before injecting RAG/memory | Implemented `CHROMA_DISTANCE_THRESHOLD` (env var) and per-call filtering in `rag_engine/storage/chroma_memory.py` and `rag_engine/storage/chroma_knowledge.py` to avoid irrelevant injections. Optional env var can be set to a float (e.g., `0.35`) to filter by distance; lower distance = higher similarity (cosine space). |
 | High | DONE | Sync `pyproject.toml` with real deps | Added `chromadb`, `mlx-lm`, `pydantic`, and `mcp` to `pyproject.toml` to better reflect runtime/test requirements. |
-| High | DONE | Implement TLDR Outlook news scraper | New `ingest_outlook_news.py` connects to Outlook IMAP, fetches from 'News' folder, parses HTML, removes clutter, and ingests into `tech_news` collection with full metadata tracking. Supports configurable email limits, chunk sizes, and IMAP parameters. |
+| High | DONE | Implement TLDR Outlook news scraper | New `ingest_outlook_news.py` connects to Outlook IMAP, fetches from 'News' folder, parses HTML, removes clutter, and ingests into `tech_news` collection with full metadata tracking. **Secure password prompting** (never stored in config). **Incremental updates**: Tracks processed emails in `processed_emails.json` to skip already-consumed messages on subsequent runs. |
 | Medium | DONE | Use real chat turns in `apply_chat_template()` | Now we pass recent chat turns as real `role`/`content` messages into `tokenizer.apply_chat_template()` for improved conversational context. |
 | Medium | DONE | Add streaming to `/analyze` | `/analyze` supports `stream` flag; when enabled it returns a streaming text/plain response. |
 | Medium | DONE | Pair user+assistant in long-term memory | New `add_paired_memory()` stores a single combined document for user+assistant replies to improve retrieval associations. |

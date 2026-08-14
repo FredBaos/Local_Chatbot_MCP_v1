@@ -17,10 +17,12 @@ import sys
 import re
 import imaplib
 import email
+import json
+import getpass
 from email.header import decode_header
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Set
 from bs4 import BeautifulSoup
 
 if __package__ in {None, ""}:
@@ -28,6 +30,50 @@ if __package__ in {None, ""}:
 
 from rag_engine.storage.chroma_knowledge import add_to_chroma
 from rag_engine.utils.rag_support import chunk_text
+
+
+# File to track processed email IDs
+PROCESSED_EMAILS_FILE = os.path.join(os.path.dirname(__file__), "..", "storage", "data", "processed_emails.json")
+
+
+def load_processed_emails() -> Set[str]:
+    """Load set of already-processed email IDs from tracking file."""
+    if not os.path.exists(PROCESSED_EMAILS_FILE):
+        return set()
+    
+    try:
+        with open(PROCESSED_EMAILS_FILE, "r") as f:
+            data = json.load(f)
+            return set(data.get("email_ids", []))
+    except Exception as e:
+        print(f"⚠ Could not load processed emails file: {e}")
+        return set()
+
+
+def save_processed_emails(email_ids: Set[str]) -> None:
+    """Save processed email IDs to tracking file."""
+    try:
+        os.makedirs(os.path.dirname(PROCESSED_EMAILS_FILE), exist_ok=True)
+        with open(PROCESSED_EMAILS_FILE, "w") as f:
+            json.dump({"email_ids": list(email_ids)}, f, indent=2)
+        print(f"✓ Saved {len(email_ids)} processed email IDs")
+    except Exception as e:
+        print(f"⚠ Could not save processed emails file: {e}")
+
+
+def get_email_uid(email_message) -> Optional[str]:
+    """Extract or generate a unique ID for an email."""
+    message_id = email_message.get("Message-ID")
+    if message_id:
+        return message_id.strip("<>")
+    
+    # Fallback: create ID from subject + date
+    subject = email_message.get("Subject", "")
+    date = email_message.get("Date", "")
+    if subject and date:
+        return f"{subject}:{date}"
+    
+    return None
 
 
 def get_imap_connection(email_address: str, password: str, server: str = "outlook.office365.com", port: int = 993):
@@ -191,34 +237,48 @@ def extract_email_content(email_message) -> dict:
 def fetch_tldr_emails(
     mail: imaplib.IMAP4_SSL,
     limit: int = 10,
-    sender_filter: str = "tldr"
-) -> list[dict]:
+    sender_filter: str = "tldr",
+    processed_ids: Optional[Set[str]] = None
+) -> tuple[list[dict], Set[str]]:
     """
-    Fetch TLDR newsletter emails from selected folder.
+    Fetch TLDR newsletter emails from selected folder, skipping already-processed ones.
     
     Args:
         mail: Connected IMAP object
         limit: Maximum number of emails to fetch
         sender_filter: Filter emails by sender substring (default: 'tldr')
+        processed_ids: Set of already-processed email IDs to skip
     
     Returns:
-        List of email dictionaries with subject, date, body, sender
+        Tuple of (list of new email dicts, set of all processed IDs including new ones)
     """
+    if processed_ids is None:
+        processed_ids = set()
+    
     try:
         status, message_ids = mail.search(None, "ALL")
         if status != "OK":
             print("✗ No emails found")
-            return []
+            return [], processed_ids
         
         email_list = message_ids[0].split()
         email_list = email_list[-limit:]  # Get most recent N emails
         
         emails = []
+        skipped = 0
         for email_id in email_list:
             status, email_data = mail.fetch(email_id, "(RFC822)")
             if status == "OK":
                 email_body = email_data[0][1]
                 email_message = email.message_from_bytes(email_body)
+                
+                # Get unique email ID
+                uid = get_email_uid(email_message)
+                
+                # Skip if already processed
+                if uid and uid in processed_ids:
+                    skipped += 1
+                    continue
                 
                 # Filter by sender if specified
                 sender = email_message.get("From", "").lower()
@@ -226,13 +286,17 @@ def fetch_tldr_emails(
                     content = extract_email_content(email_message)
                     if content["body"].strip():  # Only add if body is not empty
                         emails.append(content)
+                        if uid:
+                            processed_ids.add(uid)
                         print(f"✓ Fetched: {content['subject'][:50]}...")
         
-        print(f"✓ Successfully fetched {len(emails)} emails")
-        return emails
+        if skipped > 0:
+            print(f"⊘ Skipped {skipped} already-processed emails")
+        print(f"✓ Successfully fetched {len(emails)} new emails")
+        return emails, processed_ids
     except Exception as e:
         print(f"✗ Error fetching emails: {e}")
-        return []
+        return [], processed_ids
 
 
 def ingest_outlook_news(
@@ -263,6 +327,10 @@ def ingest_outlook_news(
     print("TLDR News Outlook Scraper")
     print(f"{'='*60}\n")
     
+    # Load previously processed emails
+    processed_ids = load_processed_emails()
+    print(f"📋 Found {len(processed_ids)} previously processed emails\n")
+    
     # Connect to Outlook
     mail = get_imap_connection(email_address, password)
     if not mail:
@@ -271,8 +339,13 @@ def ingest_outlook_news(
     # Select News folder
     select_news_folder(mail, folder_name)
     
-    # Fetch emails
-    emails = fetch_tldr_emails(mail, limit=email_limit, sender_filter="")
+    # Fetch emails (excluding already-processed ones)
+    emails, processed_ids = fetch_tldr_emails(
+        mail, 
+        limit=email_limit, 
+        sender_filter="",
+        processed_ids=processed_ids
+    )
     mail.close()
     mail.logout()
     
@@ -322,25 +395,30 @@ def ingest_outlook_news(
     print(f"✓ Collection: '{collection_name}'")
     print(f"{'='*60}\n")
     
+    # Save processed email IDs for next run (incremental ingestion)
+    save_processed_emails(processed_ids)
+    
     return total_ingested
 
 
 if __name__ == "__main__":
-    # Example usage
-    # Note: Set environment variables for security
-    email_address = os.getenv("OUTLOOK_EMAIL", "your_email@outlook.com")
-    password = os.getenv("OUTLOOK_PASSWORD", "your_app_specific_password")
+    # Prompt for email and password (secure input)
+    email_address = os.getenv("OUTLOOK_EMAIL")
     
-    if email_address == "your_email@outlook.com":
-        print("⚠ Please set OUTLOOK_EMAIL and OUTLOOK_PASSWORD environment variables")
-        print("Example: export OUTLOOK_EMAIL='your_email@outlook.com'")
-        print("         export OUTLOOK_PASSWORD='your_app_specific_password'")
-    else:
-        ingest_outlook_news(
-            email_address=email_address,
-            password=password,
-            folder_name="News",
-            email_limit=10,
-            chunk_size=500,
-            chunk_overlap=50,
-        )
+    if not email_address:
+        email_address = input("📧 Enter your Outlook email address: ").strip()
+    
+    password = getpass.getpass("🔑 Enter your Outlook password or app-specific password: ")
+    
+    if not email_address or not password:
+        print("✗ Email and password are required")
+        sys.exit(1)
+    
+    ingest_outlook_news(
+        email_address=email_address,
+        password=password,
+        folder_name="News",
+        email_limit=20,  # Fetch more emails to handle incremental updates
+        chunk_size=500,
+        chunk_overlap=50,
+    )
