@@ -94,7 +94,7 @@ def retrieve_memory(query: str, limit: int = 5, exclude_session_id: str = None, 
     results = collection.query(
         query_texts=[query],
         n_results=max(limit * 4, 12),
-        include=["documents", "metadatas", "ids", "distances"],
+        include=["documents", "metadatas", "distances"],
     )
 
     docs = results.get("documents", [[]])[0]

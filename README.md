@@ -48,22 +48,32 @@
                 ──► Index prompt/response embedding to ChromaDB (Long-Term)
 ```
 
-## Setup of Docker container to then run images of compiled code
+## Other Things to Explore & Improve
 
-TODO
+### Currently Implemented ✅
+- **RAG Pipeline**: Chunking, vectorization, and ChromaDB storage for semantic retrieval
+- **Multi-Collection Knowledge**: Separate collections for `car_specs` (2,059 docs), `tech_news` (3 docs), and `chat_memory` (46 docs)
+- **Distance Thresholding**: Configured via `CHROMA_DISTANCE_THRESHOLD` to filter irrelevant results
+- **Dual Memory Architecture**: SQLite (short-term) + ChromaDB (long-term + reference knowledge)
 
-## Other things to explore, include or change in my project
+### High Priority (Next Phase)
+- **Citation & Metadata Tracking**: Enhance RAG to include source tracking, document chunks, and confidence scores in responses
+- **MCP Server Implementation**: Expose RAG/memory tools via MCP endpoints (aligns with project name vision)
+- **News Ingestion Pipeline**: Expand `tech_news` collection with automated scraping of AI/tech news with TLDR summaries
+- **Car Dataset Expansion**: Explore additional vehicle datasets or user-provided specs for richer domain coverage
 
-- create some knowledge or documentation and add the below + pdf from drive
-RAG : Chunking -> vectorize with embeddings in vector DB, then you can query it to retrieve relevant chunks from DB. also check interest of citation tracking and metadata usage. 
-- check for optimal folder structure to have MCP RAG Vector DB etc.
-- connect model to internet and create a vector db with news (TLDR) articles about AI and Tech and then use RAG
-- other vector DB about cars specs
-- check other things to do (paper on google drive about AI concepts)
-- include some RAG capabilities
-- study MCP question and understand concrete applications
-- check multi-agents systems: Langchain & crewai
-- use gitingest.com and some LLM to generate a nice documentation (Gemini output) once RAG and MCP and multiagent added
+### Medium Priority (Polish & Scale)
+- **Multi-Agent Systems**: Integrate Langchain or CrewAI for complex reasoning chains (e.g., comparative analysis agents)
+- **Streaming Optimization**: Extend streaming support to RAG result formatting and chunked memory injection
+- **Deduplication Engine**: Implement similarity-based deduplication in `tech_news` and other ingestion pipelines
+- **Documentation Generation**: Use gitingest + LLM to auto-generate project documentation with examples
+- **Setup of Docker container**: using OrbStack, to then run images of compiled code
+
+### Lower Priority (Exploration)
+- **Internet-Connected Model**: Explore real-time web integration for up-to-date contextual responses
+- **Lazy Model Loading**: Defer MLX model initialization until first inference request
+- **Vector DB Optimization**: Profile chunking strategies, embedding model choice, and indexing parameters
+- **Data Engineering Pipeline**: Explore dbt, data validation, and versioning for knowledge bases
 
 ## Planned Improvements
 
