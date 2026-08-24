@@ -129,7 +129,7 @@ Modify the last section of `ingest_outlook_news.py` to change:
 - `chunk_size`: Characters per chunk (default: 500)
 - `chunk_overlap`: Overlap between chunks (default: 50)
 
-## MCP Server for Vector DB Access
+## MCP Server for Vector DB Access (Planned — not yet implemented)
 
 > **Note on MCP + RAG Architecture:** RAG (Retrieval-Augmented Generation) and MCP (Model Context Protocol) serve complementary purposes. RAG is the **retrieval mechanism** (how you search and fetch relevant documents), while MCP is the **protocol/interface** (how other agents/services access your tools). Consider implementing a local MCP server that exposes the ChromaDB vector DB as a searchable resource — this would allow:
 > - External AI agents to query your `tech_news`, `car_specs`, and `chat_memory` collections
@@ -139,9 +139,9 @@ Modify the last section of `ingest_outlook_news.py` to change:
 >
 > **Example:** An MCP tool named `search_tech_news(query: str)` → calls ChromaDB, returns top-K relevant chunks with metadata. This decouples your RAG implementation from external consumers.
 
-### 🔌 Local MCP Server Features
+### 🔌 Proposed Local MCP Server Design
 
-Our local FastMCP server (`mcp_servers/knowledge_mcp_server.py`) exposes unified tool endpoints over stdio for external AI agents (Claude Desktop, VS Code, Cursor):
+Design sketch for a future local FastMCP server (`mcp_servers/knowledge_mcp_server.py`) exposing unified tool endpoints over stdio for external AI agents (Claude Desktop, VS Code, Cursor) — see the Planned Improvements table below for status:
 
 * **`search_tech_news(query)`**: On-demand semantic vector search across ingested newsletter archives (`tech_news` collection in ChromaDB).
 * **`search_car_specs(query)`**: Structured knowledge retrieval across technical specifications and datasets (`car_specs` collection).
@@ -151,7 +151,7 @@ Our local FastMCP server (`mcp_servers/knowledge_mcp_server.py`) exposes unified
 
 ### Currently Implemented ✅
 - **RAG Pipeline**: Chunking, vectorization, and ChromaDB storage for semantic retrieval
-- **Multi-Collection Knowledge**: Separate collections for `car_specs` (2,059 docs), `tech_news` (growing via Outlook), and `chat_memory` (46 docs)
+- **Multi-Collection Knowledge**: Separate collections for `car_specs` (2,059 docs), `tech_news` (growing via Outlook), and `chat_memory` (growing per session)
 - **Distance Thresholding**: Configured via `CHROMA_DISTANCE_THRESHOLD` to filter irrelevant results
 - **Dual Memory Architecture**: SQLite (short-term) + ChromaDB (long-term + reference knowledge)
 - **News Ingestion Pipeline**: Automated TLDR/Outlook email scraping with HTML parsing and metadata enrichment
@@ -182,7 +182,7 @@ Our local FastMCP server (`mcp_servers/knowledge_mcp_server.py`) exposes unified
 | High | DONE | Sync `pyproject.toml` with real deps | Added `chromadb`, `mlx-lm`, `pydantic`, and `mcp` to `pyproject.toml` to better reflect runtime/test requirements. |
 | High | DONE | Implement TLDR Outlook news scraper | New `ingest_outlook_news.py` connects to Outlook IMAP, fetches from 'News' folder, parses HTML, removes clutter, and ingests into `tech_news` collection with full metadata tracking. **Secure password prompting** (never stored in config). **Incremental updates**: Tracks processed emails in `processed_emails.json` to skip already-consumed messages on subsequent runs. |
 | Medium | DONE | Use real chat turns in `apply_chat_template()` | Now we pass recent chat turns as real `role`/`content` messages into `tokenizer.apply_chat_template()` for improved conversational context. |
-| Medium | DONE | Add streaming to `/analyze` | `/analyze` supports `stream` flag; when enabled it returns a streaming text/plain response. |
+| Medium | DONE | Add streaming to `/analyze` | `/analyze` supports a `stream` flag; when enabled it returns a chunked `text/plain` response. Note: generation still runs to completion first — the response is chunked afterward, not streamed token-by-token from the model. |
 | Medium | DONE | Pair user+assistant in long-term memory | New `add_paired_memory()` stores a single combined document for user+assistant replies to improve retrieval associations. |
 | Low | TODO | Deduplicate news ingest | Avoid vector DB bloat with duplicate/similar articles |
 | Low | TODO | Rename `chat_memory` → `chroma_memory` or update README | Consistency across codebase |
