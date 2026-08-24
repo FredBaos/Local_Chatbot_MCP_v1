@@ -31,13 +31,12 @@ def query_knowledge(collection_name: str, query_text: str, limit: int = 3, dista
         documents = results.get("documents", [[]])[0]
         metadatas = results.get("metadatas", [[]])[0]
         distances = results.get("distances", [[]])[0]
+        ids = results.get("ids", [[]])[0]
 
         effective_threshold = distance_threshold if distance_threshold is not None else DEFAULT_CHROMA_DISTANCE_THRESHOLD
 
         items = []
-        # zip documents/metadatas/distances; ids may not be provided by this
-        # client when not requested in include. We ignore ids here.
-        for doc, meta, dist in zip(documents, metadatas, distances):
+        for _id, doc, meta, dist in zip(ids, documents, metadatas, distances):
             if doc is None:
                 continue
             if effective_threshold is not None:
