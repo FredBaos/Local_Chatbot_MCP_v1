@@ -17,6 +17,106 @@ from rag_engine.storage.chroma_memory import get_chroma_client
 SUPPORTED_EXTENSIONS = {".csv", ".zip", ".xlsx", ".xls"}
 DEFAULT_LOCAL_CAR_SPECS_CSV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "storage", "data", "car details.csv")
 
+# The source dataset has no body-type column, so "SUV"/"sedan"/etc. queries can't
+# match anything in the raw text. This maps (Make, base model word) -> body type
+# from real-world knowledge of these specific Indian-market model lines, so the
+# enriched document text below can actually mention a body type.
+CAR_BODY_TYPES: dict[tuple[str, str], str] = {
+    ("Audi", "A3"): "Sedan", ("Audi", "A4"): "Sedan", ("Audi", "A6"): "Sedan",
+    ("Audi", "A7"): "Coupe", ("Audi", "A8"): "Sedan", ("Audi", "Q2"): "SUV",
+    ("Audi", "Q3"): "SUV", ("Audi", "Q5"): "SUV", ("Audi", "Q7"): "SUV",
+    ("Audi", "Q8"): "SUV", ("Audi", "RS5"): "Coupe", ("Audi", "TT"): "Coupe",
+    ("BMW", "2"): "Coupe", ("BMW", "3-Series"): "Sedan", ("BMW", "5-Series"): "Sedan",
+    ("BMW", "6-Series"): "Coupe", ("BMW", "7-Series"): "Sedan", ("BMW", "X1"): "SUV",
+    ("BMW", "X3"): "SUV", ("BMW", "X4"): "SUV", ("BMW", "X5"): "SUV",
+    ("BMW", "X6"): "SUV", ("BMW", "X7"): "SUV",
+    ("Chevrolet", "Beat"): "Hatchback", ("Chevrolet", "Captiva"): "SUV",
+    ("Chevrolet", "Cruze"): "Sedan", ("Chevrolet", "Sail"): "Sedan", ("Chevrolet", "Spark"): "Hatchback",
+    ("Datsun", "Go"): "Hatchback", ("Datsun", "Redigo"): "Hatchback",
+    ("Ferrari", "488"): "Sports Car",
+    ("Fiat", "Linea"): "Sedan", ("Fiat", "Punto"): "Hatchback",
+    ("Ford", "Aspire"): "Sedan", ("Ford", "Ecosport"): "SUV", ("Ford", "Endeavour"): "SUV",
+    ("Ford", "Fiesta"): "Sedan", ("Ford", "Figo"): "Hatchback", ("Ford", "Ikon"): "Sedan",
+    ("Ford", "Mustang"): "Coupe",
+    ("Honda", "Accord"): "Sedan", ("Honda", "Amaze"): "Sedan", ("Honda", "BR-V"): "SUV",
+    ("Honda", "Brio"): "Hatchback", ("Honda", "CR-V"): "SUV", ("Honda", "City"): "Sedan",
+    ("Honda", "Civic"): "Sedan", ("Honda", "Jazz"): "Hatchback", ("Honda", "Mobilio"): "MUV/MPV",
+    ("Honda", "WR-V"): "SUV",
+    ("Hyundai", "Accent"): "Sedan", ("Hyundai", "Alcazar"): "SUV", ("Hyundai", "Aura"): "Sedan",
+    ("Hyundai", "Creta"): "SUV", ("Hyundai", "Elantra"): "Sedan", ("Hyundai", "Elite"): "Hatchback",
+    ("Hyundai", "Eon"): "Hatchback", ("Hyundai", "Grand"): "Hatchback", ("Hyundai", "Santa"): "SUV",
+    ("Hyundai", "Santro"): "Hatchback", ("Hyundai", "Sonata"): "Sedan", ("Hyundai", "Tucson"): "SUV",
+    ("Hyundai", "Venue"): "SUV", ("Hyundai", "Verna"): "Sedan", ("Hyundai", "Xcent"): "Sedan",
+    ("Hyundai", "i10"): "Hatchback", ("Hyundai", "i20"): "Hatchback",
+    ("Isuzu", "MU-X"): "SUV",
+    ("Jaguar", "F-Pace"): "SUV", ("Jaguar", "XE"): "Sedan", ("Jaguar", "XF"): "Sedan", ("Jaguar", "XJ"): "Sedan",
+    ("Jeep", "Compass"): "SUV", ("Jeep", "Wrangler"): "SUV",
+    ("Kia", "Carnival"): "MUV/MPV", ("Kia", "Seltos"): "SUV", ("Kia", "Sonet"): "SUV",
+    ("Lamborghini", "Huracan"): "Sports Car",
+    ("Land Rover", "Discovery"): "SUV", ("Land Rover", "Evoque"): "SUV", ("Land Rover", "Range"): "SUV",
+    ("Lexus", "ES"): "Sedan", ("Lexus", "LX"): "SUV", ("Lexus", "NX"): "SUV",
+    ("MG", "Astor"): "SUV", ("MG", "Gloster"): "SUV", ("MG", "Hector"): "SUV", ("MG", "ZS"): "SUV",
+    ("MINI", "Cooper"): "Hatchback", ("MINI", "Countryman"): "SUV",
+    ("Mahindra", "Alturas"): "SUV", ("Mahindra", "Bolero"): "SUV", ("Mahindra", "KUV100"): "SUV",
+    ("Mahindra", "Marazzo"): "MUV/MPV", ("Mahindra", "Quanto"): "SUV", ("Mahindra", "Scorpio"): "SUV",
+    ("Mahindra", "TUV300"): "SUV", ("Mahindra", "Thar"): "SUV", ("Mahindra", "XUV300"): "SUV",
+    ("Mahindra", "XUV500"): "SUV", ("Mahindra", "XUV700"): "SUV", ("Mahindra", "Xylo"): "MUV/MPV",
+    ("Maruti Suzuki", "Alto"): "Hatchback", ("Maruti Suzuki", "Baleno"): "Hatchback",
+    ("Maruti Suzuki", "Celerio"): "Hatchback", ("Maruti Suzuki", "Ciaz"): "Sedan",
+    ("Maruti Suzuki", "DZire"): "Sedan", ("Maruti Suzuki", "Eeco"): "MUV/MPV",
+    ("Maruti Suzuki", "Ertiga"): "MUV/MPV", ("Maruti Suzuki", "Estilo"): "Hatchback",
+    ("Maruti Suzuki", "Grand"): "SUV", ("Maruti Suzuki", "Ignis"): "Hatchback",
+    ("Maruti Suzuki", "Ritz"): "Hatchback", ("Maruti Suzuki", "S-Cross"): "SUV",
+    ("Maruti Suzuki", "S-Presso"): "Hatchback", ("Maruti Suzuki", "SX4"): "Sedan",
+    ("Maruti Suzuki", "Swift"): "Hatchback", ("Maruti Suzuki", "Vitara"): "SUV",
+    ("Maruti Suzuki", "Wagon"): "Hatchback", ("Maruti Suzuki", "XL6"): "MUV/MPV",
+    ("Maruti Suzuki", "Zen"): "Hatchback",
+    ("Maserati", "Levante"): "SUV",
+    ("Mercedes-Benz", "A-Class"): "Sedan", ("Mercedes-Benz", "B-class"): "MUV/MPV",
+    ("Mercedes-Benz", "C-Class"): "Sedan", ("Mercedes-Benz", "C-Coupe"): "Coupe",
+    ("Mercedes-Benz", "CLA"): "Coupe", ("Mercedes-Benz", "CLS"): "Coupe",
+    ("Mercedes-Benz", "E-Class"): "Sedan", ("Mercedes-Benz", "GL-Class"): "SUV",
+    ("Mercedes-Benz", "GLA"): "SUV", ("Mercedes-Benz", "GLC"): "SUV", ("Mercedes-Benz", "GLE"): "SUV",
+    ("Mercedes-Benz", "GLS"): "SUV", ("Mercedes-Benz", "M-Class"): "SUV",
+    ("Mercedes-Benz", "R-Class"): "MUV/MPV", ("Mercedes-Benz", "S-Class"): "Sedan",
+    ("Mercedes-Benz", "SLK-Class"): "Convertible", ("Mercedes-Benz", "V-Class"): "MUV/MPV",
+    ("Mitsubishi", "Pajero"): "SUV",
+    ("Nissan", "Magnite"): "SUV", ("Nissan", "Micra"): "Hatchback", ("Nissan", "Sunny"): "Sedan",
+    ("Nissan", "Teana"): "Sedan", ("Nissan", "Terrano"): "SUV",
+    ("Porsche", "718"): "Sports Car", ("Porsche", "911"): "Sports Car", ("Porsche", "Cayenne"): "SUV",
+    ("Porsche", "Macan"): "SUV", ("Porsche", "Panamera"): "Sedan",
+    ("Renault", "Duster"): "SUV", ("Renault", "Fluence"): "Sedan", ("Renault", "Kiger"): "SUV",
+    ("Renault", "Kwid"): "Hatchback", ("Renault", "Pulse"): "Hatchback",
+    ("Rolls-Royce", "Ghost"): "Sedan",
+    ("Skoda", "Fabia"): "Hatchback", ("Skoda", "Kodiaq"): "SUV", ("Skoda", "Kushaq"): "SUV",
+    ("Skoda", "Octavia"): "Sedan", ("Skoda", "Rapid"): "Sedan", ("Skoda", "Superb"): "Sedan",
+    ("Ssangyong", "Rexton"): "SUV",
+    ("Tata", "Altroz"): "Hatchback", ("Tata", "Grande"): "Hatchback", ("Tata", "Harrier"): "SUV",
+    ("Tata", "Hexa"): "SUV", ("Tata", "Manza"): "Sedan", ("Tata", "Nano"): "Hatchback",
+    ("Tata", "Nexon"): "SUV", ("Tata", "Punch"): "SUV", ("Tata", "Safari"): "SUV",
+    ("Tata", "Tiago"): "Hatchback", ("Tata", "Tigor"): "Sedan", ("Tata", "Zest"): "Sedan",
+    ("Toyota", "Camry"): "Sedan", ("Toyota", "Commuter"): "MUV/MPV", ("Toyota", "Corolla"): "Sedan",
+    ("Toyota", "Fortuner"): "SUV", ("Toyota", "Glanza"): "Hatchback", ("Toyota", "Innova"): "MUV/MPV",
+    ("Toyota", "Urban"): "SUV", ("Toyota", "Vellfire"): "MUV/MPV", ("Toyota", "Yaris"): "Sedan",
+    ("Volkswagen", "Ameo"): "Sedan", ("Volkswagen", "Jetta"): "Sedan", ("Volkswagen", "Polo"): "Hatchback",
+    ("Volkswagen", "Taigun"): "SUV", ("Volkswagen", "Tiguan"): "SUV", ("Volkswagen", "Vento"): "Sedan",
+    ("Volvo", "S60"): "Sedan", ("Volvo", "S90"): "Sedan", ("Volvo", "V40"): "Hatchback",
+    ("Volvo", "XC40"): "SUV", ("Volvo", "XC60"): "SUV", ("Volvo", "XC90"): "SUV",
+}
+
+
+def infer_body_type(make: str, model_full: str) -> str:
+    """Look up a body type from the make + first word(s) of the model name."""
+    make = (make or "").strip()
+    model_full = (model_full or "").strip()
+    base_model = model_full.split()[0] if model_full else ""
+
+    # Toyota's "Etios" line splits into a sedan (Etios) and a hatchback (Etios Liva)
+    if make == "Toyota" and base_model == "Etios":
+        return "Hatchback" if "Liva" in model_full else "Sedan"
+
+    return CAR_BODY_TYPES.get((make, base_model), "Unknown")
+
 
 def _normalize_value(value: Any) -> str:
     if value is None:
@@ -183,17 +283,115 @@ def ingest_structured_csv(file_path: str, collection_name: str = "car_specs", me
         print(f"[+] Successfully integrated {len(documents)} structured items into '{collection_name}' collection.")
 
 
+def _format_car_row(row: dict[str, str]) -> tuple[str, str]:
+    """
+    Renders one used-car listing as a natural-language paragraph instead of a
+    raw key:value dump, and inlines an inferred body type so semantic search
+    can actually match "SUV"/"sedan"/etc. queries against it.
+
+    Returns (document_text, body_type).
+    """
+    make = row.get("Make", "").strip()
+    model = row.get("Model", "").strip()
+    body_type = infer_body_type(make, model)
+    # Acronym-style body types (SUV, MUV/MPV) keep their casing; plain words get lowercased
+    body_label = body_type if body_type in {"SUV", "MUV/MPV"} else body_type.lower()
+    body_phrase = f"a {body_label}" if body_type != "Unknown" else "a vehicle"
+
+    year = row.get("Year", "")
+    price = row.get("Price", "")
+    km = row.get("Kilometer", "")
+    fuel = row.get("Fuel Type", "")
+    transmission = row.get("Transmission", "")
+    location = row.get("Location", "")
+    color = row.get("Color", "")
+    owner = row.get("Owner", "")
+    seller_type = row.get("Seller Type", "")
+    engine = row.get("Engine", "")
+    max_power = row.get("Max Power", "")
+    max_torque = row.get("Max Torque", "")
+    drivetrain = row.get("Drivetrain", "")
+    seats = row.get("Seating Capacity", "")
+    fuel_tank = row.get("Fuel Tank Capacity", "")
+
+    sentences = [
+        f"This is a used {year} {make} {model}, {body_phrase}, listed in {location} for Rs. {price}."
+        if year and make and model
+        else None,
+        f"It has been driven {km} km, runs on {fuel} with a {transmission} transmission, "
+        f"and is being sold by its {owner.lower()} owner through a {seller_type.lower()} seller."
+        if km and fuel and transmission
+        else None,
+        f"It comes in {color} and is powered by a {engine} engine producing {max_power} "
+        f"and {max_torque} of torque, with {drivetrain} drivetrain."
+        if engine and max_power
+        else None,
+        f"It seats {seats} people and has a {fuel_tank}L fuel tank."
+        if seats and fuel_tank
+        else None,
+    ]
+
+    document_text = " ".join(s for s in sentences if s)
+    return document_text, body_type
+
+
 def ingest_local_car_specs(csv_path: str | None = None, collection_name: str = "car_specs"):
+    """
+    Ingests the local used-car dataset into ChromaDB as enriched natural-language
+    paragraphs (with an inferred body type) rather than raw pipe-delimited fields.
+    """
     target_path = csv_path or DEFAULT_LOCAL_CAR_SPECS_CSV
     print(f"[*] Ingesting local car specs from: {target_path}")
-    ingest_structured_csv(
-        target_path,
-        collection_name=collection_name,
-        metadata={
-            "source_file": os.path.basename(target_path),
-            "source_type": "local_csv",
-        },
-    )
+
+    try:
+        rows = load_rows_from_path(target_path)
+    except FileNotFoundError as exc:
+        print(f"[-] Data file not found at: {target_path}")
+        print(exc)
+        return
+    except ValueError as exc:
+        print(f"[-] Unsupported ingestion target: {target_path}")
+        print(exc)
+        return
+
+    client = get_chroma_client()
+    collection = client.get_or_create_collection(name=collection_name)
+    source_id = _build_source_id(target_path, {"source_type": "local_csv"})
+
+    if _source_already_ingested(collection, source_id):
+        print(f"[*] Source already ingested, skipping: {target_path}")
+        return
+
+    documents, metadatas, ids = [], [], []
+    body_type_counts: dict[str, int] = {}
+
+    for idx, row in enumerate(rows):
+        document_text, body_type = _format_car_row(row)
+        if not document_text:
+            continue
+
+        body_type_counts[body_type] = body_type_counts.get(body_type, 0) + 1
+
+        documents.append(document_text)
+        metadatas.append(
+            {
+                "source_file": os.path.basename(target_path),
+                "source_type": "local_csv",
+                "source_id": source_id,
+                "row_index": idx,
+                "make": row.get("Make", ""),
+                "model": row.get("Model", ""),
+                "body_type": body_type,
+                "price": row.get("Price", ""),
+                "year": row.get("Year", ""),
+            }
+        )
+        ids.append(f"csv_{collection_name}_row_{idx}")
+
+    if documents:
+        collection.add(documents=documents, metadatas=metadatas, ids=ids)
+        print(f"[+] Successfully integrated {len(documents)} enriched car listings into '{collection_name}' collection.")
+        print(f"[+] Body type breakdown: {body_type_counts}")
 
 
 if __name__ == "__main__":

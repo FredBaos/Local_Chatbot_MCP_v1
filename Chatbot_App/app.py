@@ -103,13 +103,13 @@ def analyze():
                 "content": (
                     "You are a helpful assistant. Use the context provided below when it is relevant "
                     "and do not claim memory unless the context supports it. When a question is about "
-                    "news or facts covered by an 'External' context block, you must answer using ONLY "
-                    "the numbered items in that block — do not mention a knowledge cutoff, and do not "
-                    "add any company, product, or event that is not explicitly listed. List every item "
-                    "provided, each as its own bullet, even if a fragment reads awkwardly out of "
-                    "context — summarize it as best you can rather than skipping it. If the block is "
-                    "missing or doesn't cover the question, say so explicitly instead of filling the "
-                    "gap with unverified information."
+                    "news, car listings, or other facts covered by an 'External' context block, you "
+                    "must answer using ONLY the numbered items in that block — do not mention a "
+                    "knowledge cutoff, and do not add any company, product, car, price, or event that "
+                    "is not explicitly listed there. List every item provided, each as its own bullet, "
+                    "even if a fragment reads awkwardly out of context — summarize it as best you can "
+                    "rather than skipping it. If the block is missing or doesn't cover the question, "
+                    "say so explicitly instead of filling the gap with unverified information."
                 ),
             },
         ]
@@ -130,7 +130,19 @@ def analyze():
             })
 
         if specs_context:
-            prompt_messages.append({"role": "system", "content": "External Tabular Specifications:\n" + "\n".join(f"- {item['text']}" for item in specs_context)})
+            numbered_specs = "\n".join(
+                f"{i}. {item['text']}" for i, item in enumerate(specs_context, start=1)
+            )
+            prompt_messages.append({
+                "role": "system",
+                "content": (
+                    f"External Tabular Specifications (these are the only {len(specs_context)} "
+                    "real listings available — do not describe any other car, generation, "
+                    "variant, or award from your own training data, even if asked to "
+                    "'tell me about' a car in general):\n"
+                    f"{numbered_specs}"
+                ),
+            })
 
         # Append recent chat history as real turn messages
         if recent_history:
@@ -143,8 +155,18 @@ def analyze():
         if retrieved_facts:
             prompt_messages.append({"role": "system", "content": "Long-term memory from other chats:\n" + "\n".join(f"- {item['text']}" for item in retrieved_facts)})
 
-        # Finally, append the current user question as the active user turn
-        prompt_messages.append({"role": "user", "content": f"Question: {user_text}"})
+        # Finally, append the current user question as the active user turn. When
+        # external context is present, restate the "don't invent items" constraint
+        # here too — models weight instructions closer to generation much more
+        # heavily than ones earlier in the system messages.
+        question_content = f"Question: {user_text}"
+        if news_context or specs_context:
+            question_content += (
+                "\n\nReminder: answer only using the numbered items in the External "
+                "context block(s) above. Do not suggest or mention any company, product, "
+                "car, or event that is not explicitly present there."
+            )
+        prompt_messages.append({"role": "user", "content": question_content})
 
         prompt = tokenizer.apply_chat_template(prompt_messages, tokenize=False, add_generation_prompt=True)
 

@@ -22,7 +22,7 @@
     - **ChromaDB (Vector DB)**: Operates both as the **Long-Term Memory (Association Layer)** for past chat records and as a **Reference Knowledge Layer** separating custom data ingestions into distinct collections:
         - `chat_memory`: Semantic matching of cross-chat historical prompts and conversation memory
         - `tech_news`: Automated ingestion from 5 TLDR newsletters (TLDR, TLDR AI, TLDR IT, TLDR Data, TLDR Fintech — articles, summaries, source links) via `ingest_tldr_web.py`
-        - `car_specs`: Structured collection from [Kaggle Vehicle dataset](https://www.kaggle.com/datasets/nehalbirla/vehicle-dataset-from-cardekho) via `ingest_csv.py`
+        - `car_specs`: Structured collection from [Kaggle Vehicle dataset](https://www.kaggle.com/datasets/nehalbirla/vehicle-dataset-from-cardekho) via `ingest_csv.py`, enriched with an inferred body type (SUV, Sedan, Hatchback, etc.) and rendered as natural-language listings
 
 ## Data Flow & Context Pipeline
 
@@ -53,6 +53,9 @@
 The `rag_engine/ingest/` directory contains modular pipelines for populating ChromaDB collections:
 
 - **`ingest_csv.py`**: Processes tabular data (CSV files) → `car_specs` collection (2,059 documents from Kaggle vehicle dataset)
+  - Renders each used-car listing as a natural-language paragraph rather than a raw pipe-delimited field dump
+  - Infers a body type (SUV, Sedan, Hatchback, MUV/MPV, Coupe, Convertible, Sports Car) from make + model, since the source dataset has no such column — this is what makes "what SUV..." style questions actually retrievable
+  - Also tags each row with `make`, `model`, `body_type`, `price`, and `year` metadata
 - **`ingest_tldr_web.py`**: Crawls TLDR's public newsletter archive (tldr.tech) → `tech_news` collection
   - Fetches daily issues directly over HTTP — no email account or credentials needed
   - Crawls 5 newsletters by default: **TLDR** (`tech`), **TLDR AI** (`ai`), **TLDR IT** (`it`), **TLDR Data** (`data`), **TLDR Fintech** (`fintech`)
@@ -170,6 +173,7 @@ Archive of shipped improvements, most recent first.
 
 | Priority | Change | Why |
 | --- | --- | --- |
+| High | Enrich `car_specs` and fix RAG hallucination on sparse/generic questions | `car_specs` is now rendered as natural-language paragraphs with an inferred `body_type` (was a raw pipe-delimited dump with no body-type field at all, so "SUV" questions silently returned sedans). Also rewrote the system prompt for both `tech_news` and `car_specs` context blocks (numbered lists, explicit "don't invent items" framing, and — the fix that actually mattered — restating the constraint in the final user turn, since the model weights instructions near generation far more than ones earlier in the system messages) after live-testing showed generic questions ("tell me about the Honda Amaze", "what SUV should I buy") still triggered fabricated cars/specs even with a good context block. `car_specs` was wiped and freshly re-ingested under the new format. |
 | High | Replace Outlook email scraper with TLDR web crawler | New `ingest_tldr_web.py` crawls tldr.tech's public archive directly over HTTP — no email account, IMAP, or credentials needed. Crawls 5 newsletters (TLDR, TLDR AI, TLDR IT, TLDR Data, TLDR Fintech) by default, tagging each document with `category` and `newsletter` metadata. Parses headline/summary/source link per article, filters sponsors, and ingests into `tech_news` with **incremental tracking** via `processed_tldr_articles.json`. The old `ingest_outlook_news.py` (IMAP-based) is archived on the `email_crawler` git branch, not deleted outright. `tech_news` was wiped and freshly re-ingested under the new schema. |
 | High | Implement TLDR Outlook news scraper (superseded) | Original `ingest_outlook_news.py` connected to Outlook IMAP, fetched from the 'News' folder, parsed HTML, and ingested into `tech_news` with secure password prompting and incremental email tracking. Replaced by the web crawler above — see `email_crawler` branch for the source. |
 | High | Add Chroma distance threshold before injecting RAG/memory | Implemented `CHROMA_DISTANCE_THRESHOLD` (env var) and per-call filtering in `rag_engine/storage/chroma_memory.py` and `rag_engine/storage/chroma_knowledge.py` to avoid irrelevant injections. Optional env var can be set to a float (e.g., `0.35`) to filter by distance; lower distance = higher similarity (cosine space). |
