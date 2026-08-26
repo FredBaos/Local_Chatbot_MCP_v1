@@ -58,7 +58,6 @@ The `rag_engine/ingest/` directory contains modular pipelines for populating Chr
   - Parses headline, summary, and outbound source link per article; filters out sponsored placements
   - Chunks and vectorizes for semantic search
   - Enriches documents with metadata (category, date, source URL)
-- **`ingest_news.py`**: Single-URL article ingester, used ad hoc for one-off web pages
 
 ### Using the TLDR Web Crawler
 
@@ -177,3 +176,7 @@ Archive of shipped improvements, most recent first.
 | Medium | Pair user+assistant in long-term memory | New `add_paired_memory()` stores a single combined document for user+assistant replies to improve retrieval associations. |
 | Medium | Add streaming to `/analyze` | `/analyze` supports a `stream` flag; when enabled it returns a chunked `text/plain` response. Note: generation still runs to completion first — the response is chunked afterward, not streamed token-by-token from the model. |
 | Medium | Use real chat turns in `apply_chat_template()` | Now we pass recent chat turns as real `role`/`content` messages into `tokenizer.apply_chat_template()` for improved conversational context. |
+
+## Archived Branches
+
+- **`email_crawler`**: Snapshot of `main` before the Outlook/IMAP news scraper was removed. Holds `ingest_outlook_news.py` in full (IMAP connection, HTML cleaning, secure password prompt, `processed_emails.json` tracking) for reference or in case email-based ingestion is ever revisited. Superseded on `main` by `ingest_tldr_web.py`, which crawls TLDR's public archive over HTTP instead.
