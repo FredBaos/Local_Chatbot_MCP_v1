@@ -1,30 +1,18 @@
-# Installation steps
+# Local Chatbot MCP
 
-## Initial setup
+A fully local, privacy-preserving chatbot for Apple Silicon Macs. Inference runs on-device via MLX, with a Retrieval-Augmented Generation (RAG) layer over external knowledge (tech newsletters, a vehicle dataset) and a two-tier memory system (short-term session history, long-term cross-chat recall) — no data leaves the machine.
 
-- Projects folder created
-- Git installed via MacOS tool
-- Git config name and email + SSH
-- brew installed as package manager on Mac
-- Orbstack installed for docker containers management
+## Features
 
-## Setup of Python, Virtual Environments, and Storage
+- **Local inference** — Llama-3.2-3B-Instruct (4-bit) served via MLX, no cloud API calls
+- **RAG pipeline** — chunking, embedding, and ChromaDB storage for semantic retrieval over external knowledge
+- **Multi-collection knowledge base** — `tech_news` (TLDR newsletters, web-crawled) and `car_specs` (enriched vehicle listings), each independently refreshable
+- **Dual memory architecture** — SQLite for short-term session history, ChromaDB for long-term cross-chat recall
+- **Distance-thresholded retrieval** — configurable similarity cutoff to keep irrelevant results out of the prompt
 
-- **UV Integration** used for lightning-fast package and virtual environment management (installed via Homebrew):
-    - `uv venv --python 3.14`
-    - `source .venv/bin/activate`
-    - `deactivate`
-- **Core Dependencies Architecture**:
-    - App server & tools: `uv pip install "mcp[cli]" flask flask-cors pydantic numpy`
-    - Local Computation & Vector store: `uv pip install mlx-lm chromadb`
-- **Multi-Tiered Data & Knowledge Architecture**:
-    - **SQLite Database**: Serves as the application's **Short-Term Memory (Truth Layer)** tracking real-time conversations per session.
-    - **ChromaDB (Vector DB)**: Operates both as the **Long-Term Memory (Association Layer)** for past chat records and as a **Reference Knowledge Layer** separating custom data ingestions into distinct collections:
-        - `chat_memory`: Semantic matching of cross-chat historical prompts and conversation memory
-        - `tech_news`: Automated ingestion from 5 TLDR newsletters (TLDR, TLDR AI, TLDR IT, TLDR Data, TLDR Fintech — articles, summaries, source links) via `ingest_tldr_web.py`
-        - `car_specs`: Structured collection from [Kaggle Vehicle dataset](https://www.kaggle.com/datasets/nehalbirla/vehicle-dataset-from-cardekho) via `ingest_csv.py`, enriched with an inferred body type (SUV, Sedan, Hatchback, etc.) and rendered as natural-language listings
+## Architecture
 
-## Data Flow & Context Pipeline
+Every message flows through three context sources before reaching the model, which are assembled into a single prompt for generation:
 
 ```text
                      [ User Sends Message ]
@@ -32,9 +20,9 @@
        ┌────────────────────────┼────────────────────────┐
        ▼                        ▼                        ▼
 [ Short-Term Memory ]  [ Cross-Chat Memory ]   [ Reference Knowledge ]
-  SQLite DB Query        ChromaDB: memory        ChromaDB: tech_news / car_specs
-(Get last 10 messages  (Scan chat history for   (Retrieve unstructured articles 
- from current session)    matching topics)        & structured narrative facts)
+  SQLite DB Query        ChromaDB: chat_memory   ChromaDB: tech_news / car_specs
+(Get last 10 messages  (Scan chat history for   (Retrieve relevant articles
+ from current session)    matching topics)        & vehicle listings)
        │                        │                        │
        └────────────────────────┼────────────────────────┘
                                 ▼
@@ -43,145 +31,106 @@
                                 │
                                 ▼
                      [ Run Model Inference ]
-                ──► Stream AI Local Response
-                ──► Save raw exchange to SQLite (Short-Term)
-                ──► Index prompt/response embedding to ChromaDB (Long-Term)
+                ──► Stream response to the client
+                ──► Save raw exchange to SQLite (short-term)
+                ──► Index prompt/response embedding to ChromaDB (long-term)
 ```
 
-## Data Ingestion Modules
+## Data & Knowledge Architecture
 
-The `rag_engine/ingest/` directory contains modular pipelines for populating ChromaDB collections:
+ChromaDB serves two distinct roles, split across three collections:
 
-- **`ingest_csv.py`**: Processes tabular data (CSV files) → `car_specs` collection (2,059 documents from Kaggle vehicle dataset)
-  - Renders each used-car listing as a natural-language paragraph rather than a raw pipe-delimited field dump
-  - Infers a body type (SUV, Sedan, Hatchback, MUV/MPV, Coupe, Convertible, Sports Car) from make + model, since the source dataset has no such column — this is what makes "what SUV..." style questions actually retrievable
-  - Also tags each row with `make`, `model`, `body_type`, `price`, and `year` metadata
-- **`ingest_tldr_web.py`**: Crawls TLDR's public newsletter archive (tldr.tech) → `tech_news` collection
-  - Fetches daily issues directly over HTTP — no email account or credentials needed
-  - Crawls 5 newsletters by default: **TLDR** (`tech`), **TLDR AI** (`ai`), **TLDR IT** (`it`), **TLDR Data** (`data`), **TLDR Fintech** (`fintech`)
-  - Parses headline, summary, and outbound source link per article; filters out sponsored placements
-  - Chunks and vectorizes for semantic search
-  - Enriches documents with metadata: `category` (slug), `newsletter` (display name), `date`, `source_url`, `title`
+| Collection | Role | Populated by |
+| --- | --- | --- |
+| `chat_memory` | Long-term memory — semantic recall of past exchanges across *other* chat sessions | `add_paired_memory()` in `rag_engine/storage/chroma_memory.py`, called after every response |
+| `tech_news` | Reference knowledge — tech/AI/fintech news articles | `rag_engine/ingest/ingest_tldr_web.py`, crawling TLDR's public newsletter archive |
+| `car_specs` | Reference knowledge — used-vehicle listings | `rag_engine/ingest/ingest_csv.py`, from the [Kaggle Vehicle dataset](https://www.kaggle.com/datasets/nehalbirla/vehicle-dataset-from-cardekho) |
 
-### Using the TLDR Web Crawler
+**`tech_news`** crawls 5 TLDR newsletters directly from tldr.tech over HTTP — no email account or credentials required: **TLDR** (`tech`), **TLDR AI** (`ai`), **TLDR IT** (`it`), **TLDR Data** (`data`), and **TLDR Fintech** (`fintech`). Each article is parsed into headline, summary, and source link, sponsored placements are filtered out, and documents carry `category`, `newsletter`, `date`, and `source_url` metadata. Already-ingested articles are tracked in `processed_tldr_articles.json` so repeat runs only add new ones.
 
-**No credentials required** — this crawls TLDR's public site directly, unlike the old email-based scraper.
+**`car_specs`** renders each used-car listing as a natural-language paragraph rather than a raw pipe-delimited field dump, and infers a body type (SUV, Sedan, Hatchback, MUV/MPV, Coupe, Convertible, Sports Car) from make and model — the source dataset has no body-type column at all, so without this, a query like "what SUV should I buy" has nothing to match against.
 
-**Quick Test (Dry-Run Mode):**
+Both collections support an optional `CHROMA_DISTANCE_THRESHOLD` environment variable (a float, e.g. `0.35`) that filters out retrieval results above that cosine distance before they reach the prompt. Lower distance means higher similarity; leave it unset to disable filtering.
 
-Test the pipeline without making any network calls:
+## Prerequisites
+
+- **Apple Silicon Mac** (M-series) — MLX requires Apple's GPU/Neural Engine and does not run on Intel Macs or other platforms
+- **macOS** with [Homebrew](https://brew.sh) installed
+- **Git**, configured with your name, email, and SSH key
+- **[uv](https://docs.astral.sh/uv/)** for Python environment and package management (`brew install uv`)
+
+## Setup
+
+### Environment
+
 ```bash
-cd /Users/fredericmyotte/Documents/Projects/Local_Chatbot_MCP_v1
+uv venv --python 3.14
 source .venv/bin/activate
-python -m rag_engine.ingest.ingest_tldr_web --dry-run
+uv sync
 ```
 
-This demonstrates the full ingestion pipeline with sample data, verifying:
-- ✅ ChromaDB connection works
-- ✅ Article chunking logic works
-- ✅ Document ingestion to `tech_news` collection works
-- ✅ Processed article tracking initializes correctly
+This installs every dependency pinned in `pyproject.toml` / `uv.lock` — Flask, ChromaDB, MLX, and the rest.
 
-**Real Usage:**
+### Initial data population
+
+The knowledge collections start empty. Populate them once before first use — see [Refreshing the knowledge base](#refreshing-the-knowledge-base) below for the exact commands.
+
+### Containerization & deployment (planned)
+
+Not yet implemented. The intent is to containerize the app with Docker, managed locally via [OrbStack](https://orbstack.dev), for a reproducible, portable deployment — tracked in [Improvements](#improvements).
+
+## Usage
+
+### Running the chatbot
+
 ```bash
-python -m rag_engine.ingest.ingest_tldr_web
+source .venv/bin/activate
+python Chatbot_App/app.py
 ```
 
-By default this crawls the latest issue of all 5 newsletters (`tech`, `ai`, `it`, `data`, `fintech`). Pick different categories or a specific past issue:
+Then open `http://127.0.0.1:5000` in a browser. Each new chat tab gets its own session ID; conversations persist in SQLite and are recoverable across restarts.
+
+### Refreshing the knowledge base
+
+**Tech news** — crawls the latest issue of all 5 TLDR newsletters by default:
+
 ```bash
+python -m rag_engine.ingest.ingest_tldr_web              # latest issue, all 5 newsletters
+python -m rag_engine.ingest.ingest_tldr_web --dry-run     # test the pipeline with sample data, no network calls
 python -m rag_engine.ingest.ingest_tldr_web --categories tech,ai,dev
 python -m rag_engine.ingest.ingest_tldr_web --date 2026-08-20
 ```
 
-**Incremental Updates (Process Only New Articles):**
+Safe to run repeatedly (e.g. on a daily cron) — already-ingested articles are skipped automatically via `processed_tldr_articles.json`.
 
-The crawler automatically tracks ingested articles in:
-```
-rag_engine/storage/data/processed_tldr_articles.json
-```
+**Car specs** — one-time ingestion of the local vehicle dataset (re-running skips a source already ingested):
 
-On each run:
-- ✅ Previously ingested articles are **skipped** (matched by category + date + source URL)
-- ✅ Only **new articles** are fetched and ingested
-- ✅ Processed article IDs are persisted for next run
-- ✅ You can safely run the crawler multiple times (e.g. on a daily cron) without duplicate ingestion
-
-**Example Workflow:**
 ```bash
-# First run: Fetches the latest issue of all 5 newsletters
-python -m rag_engine.ingest.ingest_tldr_web
-# Output: ✓ Successfully ingested X chunks from Y new articles
-
-# Later: Run again after the next day's issue is published
-python -m rag_engine.ingest.ingest_tldr_web
-# Output: ⊘ Skipped N already-processed articles, ✓ Successfully ingested M new chunks
+python -m rag_engine.ingest.ingest_csv
 ```
 
-**Customization:**
+### Configuration
 
-Pass these as arguments to `ingest_tldr_web()` (or extend the CLI) to change:
-- `categories`: TLDR category slugs to crawl (default: `["tech", "ai", "it", "data", "fintech"]`)
-- `chunk_size`: Characters per chunk (default: 500)
-- `chunk_overlap`: Overlap between chunks (default: 50)
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `CHROMA_DISTANCE_THRESHOLD` | Max cosine distance for retrieval results before they're excluded from the prompt | unset (no filtering) |
 
-## MCP Server for Vector DB Access (Planned — not yet implemented)
+## Improvements
 
-> **Note on MCP + RAG Architecture:** RAG (Retrieval-Augmented Generation) and MCP (Model Context Protocol) serve complementary purposes. RAG is the **retrieval mechanism** (how you search and fetch relevant documents), while MCP is the **protocol/interface** (how other agents/services access your tools). Consider implementing a local MCP server that exposes the ChromaDB vector DB as a searchable resource — this would allow:
-> - External AI agents to query your `tech_news`, `car_specs`, and `chat_memory` collections
-> - Other tools/services in your ecosystem to access your knowledge base
-> - A common interface for multi-agent systems (e.g., CrewAI, AutoGPT)
-> - Future scaling to expose your RAG engine as a micro-service
->
-> **Example:** An MCP tool named `search_tech_news(query: str)` → calls ChromaDB, returns top-K relevant chunks with metadata. This decouples your RAG implementation from external consumers.
-
-### 🔌 Proposed Local MCP Server Design
-
-Design sketch for a future local FastMCP server (`mcp_servers/knowledge_mcp_server.py`) exposing unified tool endpoints over stdio for external AI agents (Claude Desktop, VS Code, Cursor) — see the Planned Improvements table below for status:
-
-* **`search_tech_news(query)`**: On-demand semantic vector search across ingested newsletter archives (`tech_news` collection in ChromaDB).
-* **`search_car_specs(query)`**: Structured knowledge retrieval across technical specifications and datasets (`car_specs` collection).
-* **`search_chat_memory(query)`**: On-demand cross-chat memory retrieval (`chat_memory` collection), allowing external agents to query past conversation topics, user preferences, and historical session logs without context pollution.
-
-## Planned Improvements
-
-### Currently Implemented ✅
-- **RAG Pipeline**: Chunking, vectorization, and ChromaDB storage for semantic retrieval
-- **Multi-Collection Knowledge**: Separate collections for `car_specs` (2,059 docs), `tech_news` (growing via TLDR web crawl), and `chat_memory` (growing per session)
-- **Dual Memory Architecture**: SQLite (short-term) + ChromaDB (long-term + reference knowledge)
-
-See [Done Changes](#done-changes) at the end of this doc for the full shipped-improvements log.
+Shipped work is tracked in [CHANGELOG.md](CHANGELOG.md). What's still ahead:
 
 | Priority | Change | Why |
 | --- | --- | --- |
-| High | Citation & Metadata Tracking | Enhance RAG to include source tracking, document chunks, and confidence scores in responses |
-| High | MCP Server Implementation | Expose RAG/memory tools via MCP endpoints (aligns with project name vision) |
-| High | Car Dataset Expansion | Explore additional vehicle datasets or user-provided specs for richer domain coverage |
-| Medium | Multi-Agent Systems | Integrate Langchain or CrewAI for complex reasoning chains (e.g., comparative analysis agents) |
-| Medium | Streaming Optimization | Extend streaming support to RAG result formatting and chunked memory injection |
-| Medium | Deduplication Engine | Implement similarity-based deduplication in `tech_news` and other ingestion pipelines to avoid vector DB bloat |
-| Medium | Documentation Generation | Use gitingest + LLM to auto-generate project documentation with examples |
-| Medium | Setup of Docker container | Using OrbStack, to then run images of compiled code |
-| Low | Rename `chat_memory` → `chroma_memory` or update README | Consistency across codebase |
-| Future | Internet-Connected Model | Explore real-time web integration for up-to-date contextual responses |
-| Future | Lazy-load MLX model | Defer MLX model initialization until first inference request — faster startup, testable without GPU |
-| Future | Vector DB Optimization | Profile chunking strategies, embedding model choice, and indexing parameters |
-| Future | Data Engineering Pipeline | Explore dbt, data validation, and versioning for knowledge bases |
-
-## Done Changes
-
-Archive of shipped improvements, most recent first.
-
-| Priority | Change | Why |
-| --- | --- | --- |
-| High | Enrich `car_specs` and fix RAG hallucination on sparse/generic questions | `car_specs` is now rendered as natural-language paragraphs with an inferred `body_type` (was a raw pipe-delimited dump with no body-type field at all, so "SUV" questions silently returned sedans). Also rewrote the system prompt for both `tech_news` and `car_specs` context blocks (numbered lists, explicit "don't invent items" framing, and — the fix that actually mattered — restating the constraint in the final user turn, since the model weights instructions near generation far more than ones earlier in the system messages) after live-testing showed generic questions ("tell me about the Honda Amaze", "what SUV should I buy") still triggered fabricated cars/specs even with a good context block. `car_specs` was wiped and freshly re-ingested under the new format. |
-| High | Replace Outlook email scraper with TLDR web crawler | New `ingest_tldr_web.py` crawls tldr.tech's public archive directly over HTTP — no email account, IMAP, or credentials needed. Crawls 5 newsletters (TLDR, TLDR AI, TLDR IT, TLDR Data, TLDR Fintech) by default, tagging each document with `category` and `newsletter` metadata. Parses headline/summary/source link per article, filters sponsors, and ingests into `tech_news` with **incremental tracking** via `processed_tldr_articles.json`. The old `ingest_outlook_news.py` (IMAP-based) is archived on the `email_crawler` git branch, not deleted outright. `tech_news` was wiped and freshly re-ingested under the new schema. |
-| High | Implement TLDR Outlook news scraper (superseded) | Original `ingest_outlook_news.py` connected to Outlook IMAP, fetched from the 'News' folder, parsed HTML, and ingested into `tech_news` with secure password prompting and incremental email tracking. Replaced by the web crawler above — see `email_crawler` branch for the source. |
-| High | Add Chroma distance threshold before injecting RAG/memory | Implemented `CHROMA_DISTANCE_THRESHOLD` (env var) and per-call filtering in `rag_engine/storage/chroma_memory.py` and `rag_engine/storage/chroma_knowledge.py` to avoid irrelevant injections. Optional env var can be set to a float (e.g., `0.35`) to filter by distance; lower distance = higher similarity (cosine space). |
-| High | Sync `pyproject.toml` with real deps | Added `chromadb`, `mlx-lm`, `pydantic`, and `mcp` to `pyproject.toml` to better reflect runtime/test requirements. |
-| Medium | Pair user+assistant in long-term memory | New `add_paired_memory()` stores a single combined document for user+assistant replies to improve retrieval associations. |
-| Medium | Add streaming to `/analyze` | `/analyze` supports a `stream` flag; when enabled it returns a chunked `text/plain` response. Note: generation still runs to completion first — the response is chunked afterward, not streamed token-by-token from the model. |
-| Medium | Use real chat turns in `apply_chat_template()` | Now we pass recent chat turns as real `role`/`content` messages into `tokenizer.apply_chat_template()` for improved conversational context. |
-
-## Archived Branches
-
-- **`email_crawler`**: Snapshot of `main` before the Outlook/IMAP news scraper was removed. Holds `ingest_outlook_news.py` in full (IMAP connection, HTML cleaning, secure password prompt, `processed_emails.json` tracking) for reference or in case email-based ingestion is ever revisited. Superseded on `main` by `ingest_tldr_web.py`, which crawls TLDR's public archive over HTTP instead.
+| High | Citation & metadata tracking | Enhance RAG to include source tracking, document chunks, and confidence scores in responses |
+| High | Car dataset expansion | Explore additional vehicle datasets or user-provided specs for richer domain coverage |
+| Medium | Multi-agent systems | Integrate Langchain or CrewAI for complex reasoning chains (e.g., comparative analysis agents) |
+| Medium | Streaming optimization | Extend streaming support to RAG result formatting and chunked memory injection |
+| Medium | Deduplication engine | Similarity-based deduplication in `tech_news` and other ingestion pipelines, to catch the same story appearing under multiple newsletters |
+| Medium | Documentation generation | Use gitingest + LLM to auto-generate project documentation with examples |
+| Medium | Docker container | See [Containerization & deployment](#containerization--deployment-planned) above |
+| Low | Rename `chat_memory` → `chroma_memory` | Naming consistency across the codebase |
+| Exploratory | MCP server exposure | Expose the RAG/memory collections via an MCP server for *external* agents or tools (e.g. Claude Desktop, Cursor) to query directly. Not required for this chatbot's own RAG pipeline, which already calls ChromaDB directly with no protocol overhead — concrete use case still to be determined |
+| Future | Internet-connected model | Explore real-time web integration for up-to-date contextual responses |
+| Future | Lazy-load MLX model | Defer model initialization until first inference request — faster startup, testable without GPU |
+| Future | Vector DB optimization | Profile chunking strategies, embedding model choice, and indexing parameters |
+| Future | Data engineering pipeline | Explore dbt, data validation, and versioning for knowledge bases |
