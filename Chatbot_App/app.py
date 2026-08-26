@@ -32,7 +32,7 @@ MODEL_DISPLAY_NAME = MODEL_NAME.split("/")[-1]
 MODEL_PARAMETER_LABEL = "≈3B params (4-bit quantized)"
 RECENT_MESSAGE_WINDOW = 10
 LONG_TERM_MEMORY_LIMIT = 5
-EXTERNAL_KNOWLEDGE_LIMIT = 2
+EXTERNAL_KNOWLEDGE_LIMIT = 5
 
 @app.route('/')
 def home():
@@ -101,8 +101,15 @@ def analyze():
             {
                 "role": "system",
                 "content": (
-                    "You are a helpful assistant. Use the context provided below "
-                    "when it is relevant and do not claim memory unless the context supports it."
+                    "You are a helpful assistant. Use the context provided below when it is relevant "
+                    "and do not claim memory unless the context supports it. When a question is about "
+                    "news or facts covered by an 'External' context block, you must answer using ONLY "
+                    "the numbered items in that block — do not mention a knowledge cutoff, and do not "
+                    "add any company, product, or event that is not explicitly listed. List every item "
+                    "provided, each as its own bullet, even if a fragment reads awkwardly out of "
+                    "context — summarize it as best you can rather than skipping it. If the block is "
+                    "missing or doesn't cover the question, say so explicitly instead of filling the "
+                    "gap with unverified information."
                 ),
             },
         ]
@@ -113,9 +120,13 @@ def analyze():
             prompt_messages.append({"role": "system", "content": "RAG setup guidance:\n" + rag_setup_context})
 
         if news_context:
+            numbered_news = "\n".join(
+                f"{i}. {item['text'].replace(chr(10), ' ')} (Source: {item['metadata'].get('title', 'Web Document')})"
+                for i, item in enumerate(news_context, start=1)
+            )
             prompt_messages.append({
                 "role": "system",
-                "content": "External Tech News Articles:\n" + "\n".join(f"- {item['text']} (Source: {item['metadata'].get('title', 'Web Document')})" for item in news_context),
+                "content": f"External Tech News Articles:\n{numbered_news}",
             })
 
         if specs_context:
