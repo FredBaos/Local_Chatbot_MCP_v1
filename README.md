@@ -21,7 +21,7 @@
     - **SQLite Database**: Serves as the application's **Short-Term Memory (Truth Layer)** tracking real-time conversations per session.
     - **ChromaDB (Vector DB)**: Operates both as the **Long-Term Memory (Association Layer)** for past chat records and as a **Reference Knowledge Layer** separating custom data ingestions into distinct collections:
         - `chat_memory`: Semantic matching of cross-chat historical prompts and conversation memory
-        - `tech_news`: Automated ingestion from Outlook's 'News' folder (TLDR newsletters, tech articles, AI summaries) via `ingest_outlook_news.py`
+        - `tech_news`: Automated ingestion from TLDR's public newsletter archive (tech/AI articles, summaries, source links) via `ingest_tldr_web.py`
         - `car_specs`: Structured collection from [Kaggle Vehicle dataset](https://www.kaggle.com/datasets/nehalbirla/vehicle-dataset-from-cardekho) via `ingest_csv.py`
 
 ## Data Flow & Context Pipeline
@@ -53,79 +53,71 @@
 The `rag_engine/ingest/` directory contains modular pipelines for populating ChromaDB collections:
 
 - **`ingest_csv.py`**: Processes tabular data (CSV files) → `car_specs` collection (2,059 documents from Kaggle vehicle dataset)
-- **`ingest_outlook_news.py`**: Scrapes TLDR/tech newsletters from Outlook's 'News' folder → `tech_news` collection
-  - Connects via IMAP to `outlook.office365.com`
-  - Parses HTML, removes clutter (ads, unsubscribe links)
+- **`ingest_tldr_web.py`**: Crawls TLDR's public newsletter archive (tldr.tech) → `tech_news` collection
+  - Fetches daily issues directly over HTTP — no email account or credentials needed
+  - Parses headline, summary, and outbound source link per article; filters out sponsored placements
   - Chunks and vectorizes for semantic search
-  - Enriches documents with metadata (sender, subject, date)
-- **`ingest_news.py`**: [Extensible for future news sources]
+  - Enriches documents with metadata (category, date, source URL)
+- **`ingest_news.py`**: Single-URL article ingester, used ad hoc for one-off web pages
 
-### Using the Outlook News Scraper
+### Using the TLDR Web Crawler
 
-**Security:** Password is prompted interactively using `getpass` — **never stored in config files or logs**.
+**No credentials required** — this crawls TLDR's public site directly, unlike the old email-based scraper.
 
 **Quick Test (Dry-Run Mode):**
 
-Test the pipeline without Outlook credentials:
+Test the pipeline without making any network calls:
 ```bash
 cd /Users/fredericmyotte/Documents/Projects/Local_Chatbot_MCP_v1
 source .venv/bin/activate
-python -m rag_engine.ingest.ingest_outlook_news --dry-run
+python -m rag_engine.ingest.ingest_tldr_web --dry-run
 ```
 
-This demonstrates the full ingestion pipeline with sample emails, verifying:
+This demonstrates the full ingestion pipeline with sample data, verifying:
 - ✅ ChromaDB connection works
-- ✅ Email chunking logic works
+- ✅ Article chunking logic works
 - ✅ Document ingestion to `tech_news` collection works
-- ✅ Processed email tracking initializes correctly
+- ✅ Processed article tracking initializes correctly
 
-**Real Usage (With Outlook Credentials):**
+**Real Usage:**
 ```bash
-python -m rag_engine.ingest.ingest_outlook_news
+python -m rag_engine.ingest.ingest_tldr_web
 ```
 
-You'll be prompted for:
-1. Outlook email address (or set `OUTLOOK_EMAIL` env var to skip prompt)
-2. Password (via secure prompt — not echoed to terminal)
-
-**Troubleshooting Authentication Errors:**
-
-If you get `AUTHENTICATIONFAILED` errors:
-1. ✅ Use an **app-specific password**, not your regular Outlook password
-   - Go to Outlook.com → Settings → Account → Security
-   - Create an app-specific password for IMAP
-2. ✅ Ensure **IMAP is enabled** on your account
-3. ✅ Check if **two-factor authentication** is enabled (requires app password)
-4. ✅ Verify your account hasn't been temporarily locked
-
-**Incremental Updates (Process Only New Emails):**
-
-The scraper automatically tracks processed emails in:
+By default this crawls the `tech` and `ai` categories' latest issue. Pick different categories or a specific past issue:
+```bash
+python -m rag_engine.ingest.ingest_tldr_web --categories tech,ai,dev
+python -m rag_engine.ingest.ingest_tldr_web --date 2026-08-20
 ```
-rag_engine/storage/data/processed_emails.json
+
+**Incremental Updates (Process Only New Articles):**
+
+The crawler automatically tracks ingested articles in:
+```
+rag_engine/storage/data/processed_tldr_articles.json
 ```
 
 On each run:
-- ✅ Previously ingested emails are **skipped** (marked by Message-ID or subject+date)
-- ✅ Only **new emails** are fetched and ingested
-- ✅ Processed email IDs are persisted for next run
-- ✅ You can safely run the scraper multiple times without duplicate ingestion
+- ✅ Previously ingested articles are **skipped** (matched by category + date + source URL)
+- ✅ Only **new articles** are fetched and ingested
+- ✅ Processed article IDs are persisted for next run
+- ✅ You can safely run the crawler multiple times (e.g. on a daily cron) without duplicate ingestion
 
 **Example Workflow:**
 ```bash
-# First run: Fetches last 20 emails, processes them
-python -m rag_engine.ingest.ingest_outlook_news
-# Output: ✓ Successfully ingested X chunks
+# First run: Fetches the latest tech + ai issues
+python -m rag_engine.ingest.ingest_tldr_web
+# Output: ✓ Successfully ingested X chunks from Y new articles
 
-# Later: Run again after new TLDR emails arrive
-python -m rag_engine.ingest.ingest_outlook_news
-# Output: ⊘ Skipped N already-processed emails, ✓ Successfully ingested M new chunks
+# Later: Run again after the next day's issue is published
+python -m rag_engine.ingest.ingest_tldr_web
+# Output: ⊘ Skipped N already-processed articles, ✓ Successfully ingested M new chunks
 ```
 
 **Customization:**
 
-Modify the last section of `ingest_outlook_news.py` to change:
-- `email_limit`: Number of recent emails to check (default: 20)
+Pass these as arguments to `ingest_tldr_web()` (or extend the CLI) to change:
+- `categories`: TLDR category slugs to crawl (default: `["tech", "ai"]`)
 - `chunk_size`: Characters per chunk (default: 500)
 - `chunk_overlap`: Overlap between chunks (default: 50)
 
@@ -151,7 +143,7 @@ Design sketch for a future local FastMCP server (`mcp_servers/knowledge_mcp_serv
 
 ### Currently Implemented ✅
 - **RAG Pipeline**: Chunking, vectorization, and ChromaDB storage for semantic retrieval
-- **Multi-Collection Knowledge**: Separate collections for `car_specs` (2,059 docs), `tech_news` (growing via Outlook), and `chat_memory` (growing per session)
+- **Multi-Collection Knowledge**: Separate collections for `car_specs` (2,059 docs), `tech_news` (growing via TLDR web crawl), and `chat_memory` (growing per session)
 - **Dual Memory Architecture**: SQLite (short-term) + ChromaDB (long-term + reference knowledge)
 
 See [Done Changes](#done-changes) at the end of this doc for the full shipped-improvements log.
@@ -178,7 +170,8 @@ Archive of shipped improvements, most recent first.
 
 | Priority | Change | Why |
 | --- | --- | --- |
-| High | Implement TLDR Outlook news scraper | New `ingest_outlook_news.py` connects to Outlook IMAP, fetches from 'News' folder, parses HTML, removes clutter, and ingests into `tech_news` collection with full metadata tracking. **Secure password prompting** (never stored in config). **Incremental updates**: Tracks processed emails in `processed_emails.json` to skip already-consumed messages on subsequent runs. |
+| High | Replace Outlook email scraper with TLDR web crawler | New `ingest_tldr_web.py` crawls tldr.tech's public archive directly over HTTP — no email account, IMAP, or credentials needed. Parses headline/summary/source link per article, filters sponsors, and ingests into `tech_news` with **incremental tracking** via `processed_tldr_articles.json`. The old `ingest_outlook_news.py` (IMAP-based) is archived on the `email_crawler` git branch, not deleted outright. |
+| High | Implement TLDR Outlook news scraper (superseded) | Original `ingest_outlook_news.py` connected to Outlook IMAP, fetched from the 'News' folder, parsed HTML, and ingested into `tech_news` with secure password prompting and incremental email tracking. Replaced by the web crawler above — see `email_crawler` branch for the source. |
 | High | Add Chroma distance threshold before injecting RAG/memory | Implemented `CHROMA_DISTANCE_THRESHOLD` (env var) and per-call filtering in `rag_engine/storage/chroma_memory.py` and `rag_engine/storage/chroma_knowledge.py` to avoid irrelevant injections. Optional env var can be set to a float (e.g., `0.35`) to filter by distance; lower distance = higher similarity (cosine space). |
 | High | Sync `pyproject.toml` with real deps | Added `chromadb`, `mlx-lm`, `pydantic`, and `mcp` to `pyproject.toml` to better reflect runtime/test requirements. |
 | Medium | Pair user+assistant in long-term memory | New `add_paired_memory()` stores a single combined document for user+assistant replies to improve retrieval associations. |
