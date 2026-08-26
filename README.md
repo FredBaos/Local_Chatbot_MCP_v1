@@ -21,7 +21,7 @@
     - **SQLite Database**: Serves as the application's **Short-Term Memory (Truth Layer)** tracking real-time conversations per session.
     - **ChromaDB (Vector DB)**: Operates both as the **Long-Term Memory (Association Layer)** for past chat records and as a **Reference Knowledge Layer** separating custom data ingestions into distinct collections:
         - `chat_memory`: Semantic matching of cross-chat historical prompts and conversation memory
-        - `tech_news`: Automated ingestion from TLDR's public newsletter archive (tech/AI articles, summaries, source links) via `ingest_tldr_web.py`
+        - `tech_news`: Automated ingestion from 5 TLDR newsletters (TLDR, TLDR AI, TLDR IT, TLDR Data, TLDR Fintech — articles, summaries, source links) via `ingest_tldr_web.py`
         - `car_specs`: Structured collection from [Kaggle Vehicle dataset](https://www.kaggle.com/datasets/nehalbirla/vehicle-dataset-from-cardekho) via `ingest_csv.py`
 
 ## Data Flow & Context Pipeline
@@ -105,7 +105,7 @@ On each run:
 
 **Example Workflow:**
 ```bash
-# First run: Fetches the latest tech + ai issues
+# First run: Fetches the latest issue of all 5 newsletters
 python -m rag_engine.ingest.ingest_tldr_web
 # Output: ✓ Successfully ingested X chunks from Y new articles
 
