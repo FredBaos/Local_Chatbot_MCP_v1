@@ -55,9 +55,10 @@ The `rag_engine/ingest/` directory contains modular pipelines for populating Chr
 - **`ingest_csv.py`**: Processes tabular data (CSV files) → `car_specs` collection (2,059 documents from Kaggle vehicle dataset)
 - **`ingest_tldr_web.py`**: Crawls TLDR's public newsletter archive (tldr.tech) → `tech_news` collection
   - Fetches daily issues directly over HTTP — no email account or credentials needed
+  - Crawls 5 newsletters by default: **TLDR** (`tech`), **TLDR AI** (`ai`), **TLDR IT** (`it`), **TLDR Data** (`data`), **TLDR Fintech** (`fintech`)
   - Parses headline, summary, and outbound source link per article; filters out sponsored placements
   - Chunks and vectorizes for semantic search
-  - Enriches documents with metadata (category, date, source URL)
+  - Enriches documents with metadata: `category` (slug), `newsletter` (display name), `date`, `source_url`, `title`
 
 ### Using the TLDR Web Crawler
 
@@ -83,7 +84,7 @@ This demonstrates the full ingestion pipeline with sample data, verifying:
 python -m rag_engine.ingest.ingest_tldr_web
 ```
 
-By default this crawls the `tech` and `ai` categories' latest issue. Pick different categories or a specific past issue:
+By default this crawls the latest issue of all 5 newsletters (`tech`, `ai`, `it`, `data`, `fintech`). Pick different categories or a specific past issue:
 ```bash
 python -m rag_engine.ingest.ingest_tldr_web --categories tech,ai,dev
 python -m rag_engine.ingest.ingest_tldr_web --date 2026-08-20
@@ -116,7 +117,7 @@ python -m rag_engine.ingest.ingest_tldr_web
 **Customization:**
 
 Pass these as arguments to `ingest_tldr_web()` (or extend the CLI) to change:
-- `categories`: TLDR category slugs to crawl (default: `["tech", "ai"]`)
+- `categories`: TLDR category slugs to crawl (default: `["tech", "ai", "it", "data", "fintech"]`)
 - `chunk_size`: Characters per chunk (default: 500)
 - `chunk_overlap`: Overlap between chunks (default: 50)
 
@@ -169,7 +170,7 @@ Archive of shipped improvements, most recent first.
 
 | Priority | Change | Why |
 | --- | --- | --- |
-| High | Replace Outlook email scraper with TLDR web crawler | New `ingest_tldr_web.py` crawls tldr.tech's public archive directly over HTTP — no email account, IMAP, or credentials needed. Parses headline/summary/source link per article, filters sponsors, and ingests into `tech_news` with **incremental tracking** via `processed_tldr_articles.json`. The old `ingest_outlook_news.py` (IMAP-based) is archived on the `email_crawler` git branch, not deleted outright. |
+| High | Replace Outlook email scraper with TLDR web crawler | New `ingest_tldr_web.py` crawls tldr.tech's public archive directly over HTTP — no email account, IMAP, or credentials needed. Crawls 5 newsletters (TLDR, TLDR AI, TLDR IT, TLDR Data, TLDR Fintech) by default, tagging each document with `category` and `newsletter` metadata. Parses headline/summary/source link per article, filters sponsors, and ingests into `tech_news` with **incremental tracking** via `processed_tldr_articles.json`. The old `ingest_outlook_news.py` (IMAP-based) is archived on the `email_crawler` git branch, not deleted outright. `tech_news` was wiped and freshly re-ingested under the new schema. |
 | High | Implement TLDR Outlook news scraper (superseded) | Original `ingest_outlook_news.py` connected to Outlook IMAP, fetched from the 'News' folder, parsed HTML, and ingested into `tech_news` with secure password prompting and incremental email tracking. Replaced by the web crawler above — see `email_crawler` branch for the source. |
 | High | Add Chroma distance threshold before injecting RAG/memory | Implemented `CHROMA_DISTANCE_THRESHOLD` (env var) and per-call filtering in `rag_engine/storage/chroma_memory.py` and `rag_engine/storage/chroma_knowledge.py` to avoid irrelevant injections. Optional env var can be set to a float (e.g., `0.35`) to filter by distance; lower distance = higher similarity (cosine space). |
 | High | Sync `pyproject.toml` with real deps | Added `chromadb`, `mlx-lm`, `pydantic`, and `mcp` to `pyproject.toml` to better reflect runtime/test requirements. |

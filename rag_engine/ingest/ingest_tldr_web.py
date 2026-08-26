@@ -34,8 +34,17 @@ from rag_engine.storage.chroma_knowledge import get_chroma_client
 
 
 BASE_URL = "https://tldr.tech"
-DEFAULT_CATEGORIES = ["tech", "ai"]
+DEFAULT_CATEGORIES = ["tech", "ai", "it", "data", "fintech"]
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+
+# Human-readable newsletter names for each TLDR category slug
+NEWSLETTER_NAMES = {
+    "tech": "TLDR",
+    "ai": "TLDR AI",
+    "it": "TLDR IT",
+    "data": "TLDR Data",
+    "fintech": "TLDR Fintech",
+}
 
 # File to track already-ingested article IDs
 PROCESSED_ARTICLES_FILE = os.path.join(
@@ -182,6 +191,7 @@ def fetch_issue(category: str, issue_date: Optional[str] = None) -> list[dict]:
                 "summary": summary,
                 "source_url": clean_source_url(link["href"]),
                 "category": category,
+                "newsletter": NEWSLETTER_NAMES.get(category, category),
                 "date": resolved_date,
             }
         )
@@ -244,6 +254,7 @@ def _ingest_articles_to_chroma(
                     "source_url": article["source_url"],
                     "title": article["headline"],
                     "category": article["category"],
+                    "newsletter": article["newsletter"],
                     "date": article["date"],
                     "chunk_index": i,
                     "total_chunks": len(chunks),
@@ -284,7 +295,7 @@ def ingest_tldr_web(
     Main function to crawl TLDR's web archive and ingest new articles into ChromaDB.
 
     Args:
-        categories: TLDR category slugs to crawl (default: ['tech', 'ai'])
+        categories: TLDR category slugs to crawl (default: ['tech', 'ai', 'it', 'data', 'fintech'])
         issue_date: ISO date string (YYYY-MM-DD) to fetch a specific past issue;
             defaults to each category's latest issue
         chunk_size: Size of text chunks (default: 500 characters)
@@ -312,6 +323,7 @@ def ingest_tldr_web(
                 "summary": "A demonstration article used to verify the ingestion pipeline end-to-end.",
                 "source_url": "https://example.com/sample-ai-breakthrough",
                 "category": categories[0],
+                "newsletter": NEWSLETTER_NAMES.get(categories[0], categories[0]),
                 "date": sample_date,
             },
         ]
@@ -339,7 +351,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--categories",
         default=",".join(DEFAULT_CATEGORIES),
-        help="Comma-separated TLDR categories (default: tech,ai)",
+        help="Comma-separated TLDR categories (default: tech,ai,it,data,fintech)",
     )
     parser.add_argument("--dry-run", action="store_true", help="Test the pipeline with sample data, no network calls")
     args = parser.parse_args()
