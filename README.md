@@ -77,7 +77,7 @@ This installs every dependency pinned in `pyproject.toml` / `uv.lock` — Flask,
 
 ### Initial data population
 
-The knowledge collections start empty. `tech_news` populates itself by crawling TLDR directly, but `car_specs` needs its source data downloaded first (~150MB, not committed to the repo):
+The knowledge collections start empty. `tech_news` populates itself by crawling TLDR directly, but `car_specs` needs its source data downloaded first (~125MB, not committed to the repo):
 
 ```bash
 mkdir -p rag_engine/storage/data/automobile_specs
