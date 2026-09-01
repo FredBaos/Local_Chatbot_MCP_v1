@@ -123,6 +123,30 @@ Safe to run repeatedly (e.g. on a daily cron) — already-ingested articles are 
 python -m rag_engine.ingest.ingest_automobile_specs
 ```
 
+### MCP server (proof of concept)
+
+Implemented on the `feature/mcp-server-poc` branch, not yet merged to `main`. `mcp_servers/knowledge_mcp_server.py` exposes `car_specs`, `tech_news`, and `chat_memory` as MCP tools (`search_car_specs`, `search_tech_news`, `search_chat_memory`) via FastMCP, so external MCP clients — Claude Desktop, Cursor, a future orchestrator agent — can query this project's knowledge base directly. This is additive: `Chatbot_App/app.py`'s own RAG pipeline is unchanged and doesn't use this server; it calls `query_knowledge()` / `retrieve_memory()` directly, in-process, exactly as before. See [Improvements](#improvements) for why this exists as a separate front door rather than something the chatbot itself needs.
+
+Run standalone (mainly useful for testing — a real MCP client launches it for you):
+
+```bash
+python -m mcp_servers.knowledge_mcp_server
+```
+
+Configure it in an MCP client, e.g. Claude Desktop's `claude_desktop_config.json` or Cursor's `mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "local-chatbot-knowledge": {
+      "command": "/absolute/path/to/.venv/bin/python",
+      "args": ["-m", "mcp_servers.knowledge_mcp_server"],
+      "cwd": "/absolute/path/to/Local_Chatbot_MCP_v1"
+    }
+  }
+}
+```
+
 ### Configuration
 
 | Variable | Purpose | Default |
@@ -137,13 +161,13 @@ Shipped work is tracked in [CHANGELOG.md](CHANGELOG.md). What's still ahead:
 | --- | --- | --- |
 | High | Citation & metadata tracking | Enhance RAG to include source tracking, document chunks, and confidence scores in responses |
 | High | Driving-feel content pipeline | `car_specs` covers numbers, not impressions — no ride/handling/comfort commentary exists yet. Needs a new crawler over written road-test reviews, similar in shape to `ingest_tldr_web.py`. `caranddriver.com` and `topgear.com` checked as permissive by `robots.txt`; page structure not yet inspected |
-| Medium | Multi-agent systems | Integrate Langchain or CrewAI for complex reasoning chains (e.g., comparative analysis agents) |
 | Medium | Streaming optimization | Extend streaming support to RAG result formatting and chunked memory injection |
 | Medium | Deduplication engine | Similarity-based deduplication in `tech_news` and other ingestion pipelines, to catch the same story appearing under multiple newsletters |
 | Medium | Documentation generation | Use gitingest + LLM to auto-generate project documentation with examples |
 | Medium | Docker container | See [Containerization & deployment](#containerization--deployment-planned) above |
 | Low | Rename `chat_memory` → `chroma_memory` | Naming consistency across the codebase |
-| Exploratory | MCP server exposure | Expose the RAG/memory collections via an MCP server for *external* agents or tools (e.g. Claude Desktop, Cursor) to query directly. Not required for this chatbot's own RAG pipeline, which already calls ChromaDB directly with no protocol overhead — concrete use case still to be determined |
+| Exploratory | MCP server exposure | Proof of concept implemented on the `feature/mcp-server-poc` branch — see [MCP server (proof of concept)](#mcp-server-proof-of-concept) above. Not required for this chatbot's own RAG pipeline, which already calls ChromaDB directly with no protocol overhead; the value is letting *external* agents/tools query the same knowledge base. Not yet merged to `main` |
+| Exploratory | Agent orchestration state of the art | Explore current multi-agent orchestration techniques and frameworks (e.g. Langchain, CrewAI) beyond single-tool MCP calls — routing, delegation, and combining outputs across specialized agents. One candidate: a car-research assistant pairing a specs-lookup agent (the `search_car_specs` MCP tool above) with a driving-impressions agent once the review-content pipeline exists, orchestrated to answer comparative questions ("996 vs 991 Carrera — specs and how they drive") |
 | Future | Internet-connected model | Explore real-time web integration for up-to-date contextual responses |
 | Future | Lazy-load MLX model | Defer model initialization until first inference request — faster startup, testable without GPU |
 | Future | Vector DB optimization | Profile chunking strategies, embedding model choice, and indexing parameters |
