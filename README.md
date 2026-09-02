@@ -133,19 +133,44 @@ Run standalone (mainly useful for testing — a real MCP client launches it for 
 python -m mcp_servers.knowledge_mcp_server
 ```
 
-Configure it in an MCP client, e.g. Claude Desktop's `claude_desktop_config.json` or Cursor's `mcp.json`:
+#### Connecting it to Claude Desktop
+
+**1. Get the two paths the config needs.** From the project root, with the venv activated:
+
+```bash
+cd /path/to/Local_Chatbot_MCP_v1
+source .venv/bin/activate
+pwd                        # → this is your "cwd" value
+echo "$(pwd)/.venv/bin/python"   # → this is your "command" value
+```
+
+There's nothing to look up beyond that — `args` is always the same fixed value (it just tells Python which module to run), and there's no API key, port, or account involved since the server only talks to Claude Desktop over stdio and reads your local ChromaDB.
+
+**2. Open Claude Desktop's config file.** In Claude Desktop: **Settings → Developer → Edit Config** — this opens (and creates, if it doesn't exist yet) `claude_desktop_config.json` in your editor. On macOS it lives at:
+
+```
+~/Library/Application Support/Claude/claude_desktop_config.json
+```
+
+**3. Add this server** under `mcpServers`, using the two values from step 1 (if the file already has other servers configured, add this alongside them rather than replacing the file):
 
 ```json
 {
   "mcpServers": {
     "local-chatbot-knowledge": {
-      "command": "/absolute/path/to/.venv/bin/python",
+      "command": "/Users/you/Documents/Projects/Local_Chatbot_MCP_v1/.venv/bin/python",
       "args": ["-m", "mcp_servers.knowledge_mcp_server"],
-      "cwd": "/absolute/path/to/Local_Chatbot_MCP_v1"
+      "cwd": "/Users/you/Documents/Projects/Local_Chatbot_MCP_v1"
     }
   }
 }
 ```
+
+**4. Restart Claude Desktop completely** (quit, don't just close the window) so it picks up the new config.
+
+**5. Verify it connected.** Open a new chat and look for a tools/plug icon near the message box — `local-chatbot-knowledge` should be listed with its three tools. A quick functional check: ask Claude something only this data would know, e.g. *"Using the car specs tool, look up the Porsche 911 (992) Carrera"* — a working connection returns real spec data; if the server isn't wired up, Claude has no such tool to call.
+
+Cursor works the same way via its own `mcp.json`, with the identical `command`/`args`/`cwd` shape.
 
 ### Configuration
 
