@@ -111,6 +111,20 @@ const deleteConversation = async (index) => {
   }
 };
 
+const renderCitations = (citations) => {
+  if (!citations || citations.length === 0) return null;
+
+  const citationsElement = document.createElement('p');
+  citationsElement.className = 'message-citations';
+  citationsElement.innerText = 'Sources: ' + citations
+    .map((citation) => {
+      const confidence = typeof citation.confidence === 'number' ? `, ${citation.confidence}%` : '';
+      return `${citation.title} (${citation.source}${confidence})`;
+    })
+    .join(' · ');
+  return citationsElement;
+};
+
 const renderMessages = () => {
   messagesContainer.innerHTML = '';
   const conversation = conversations[activeConversationIndex];
@@ -121,6 +135,8 @@ const renderMessages = () => {
     messageElement.className = `message ${message.role}`;
     textElement.innerText = message.content;
     messageElement.appendChild(textElement);
+    const citationsElement = renderCitations(message.citations);
+    if (citationsElement) messageElement.appendChild(citationsElement);
     messagesContainer.appendChild(messageElement);
     const clearDiv = document.createElement('div');
     clearDiv.style.clear = 'both';
@@ -130,13 +146,15 @@ const renderMessages = () => {
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
 };
 
-const addMessage = (message, role) => {
-  conversations[activeConversationIndex].messages.push({ content: message, role });
+const addMessage = (message, role, citations = null) => {
+  conversations[activeConversationIndex].messages.push({ content: message, role, citations });
   const messageElement = document.createElement('div');
   const textElement = document.createElement('p');
   messageElement.className = `message ${role}`;
   textElement.innerText = message;
   messageElement.appendChild(textElement);
+  const citationsElement = renderCitations(citations);
+  if (citationsElement) messageElement.appendChild(citationsElement);
   messagesContainer.appendChild(messageElement);
   const clearDiv = document.createElement('div');
   clearDiv.style.clear = 'both';
@@ -185,15 +203,15 @@ const sendMessage = async (message) => {
       body: JSON.stringify(requestBody)
     });
 
-    const data = await response.text();
+    const data = await response.json();
     loadingRow.remove();
 
     if (!response.ok) {
-      addMessage(`Error: ${data}`, 'error');
+      addMessage(`Error: ${data.error || 'Unknown error'}`, 'error');
       return;
     }
 
-    addMessage(data, 'aibot');
+    addMessage(data.response, 'aibot', data.citations);
   } catch (error) {
     loadingRow.remove();
     addMessage(`Request failed: ${error.message}`, 'error');
@@ -245,7 +263,8 @@ const restoreConversations = async () => {
         const historyData = await historyResponse.json();
         conversation.messages = (historyData.messages || []).map((msg) => ({
           role: msg.role === 'assistant' ? 'aibot' : msg.role,
-          content: msg.content
+          content: msg.content,
+          citations: msg.citations
         }));
       }
     }

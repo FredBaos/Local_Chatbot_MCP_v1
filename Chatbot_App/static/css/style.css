@@ -293,6 +293,19 @@ main {
   animation: fade-in-bottom 0.35s forwards;
 }
 
+.message-citations {
+  display: block;
+  clear: both;
+  max-width: 78%;
+  margin: 6px 0 0;
+  padding: 0 20px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #8a8a8a;
+  float: left;
+  text-align: left;
+}
+
 .loading-row {
   display: flex;
   align-items: center;

@@ -46,7 +46,15 @@ def query_knowledge(collection_name: str, query_text: str, limit: int = 3, dista
                 except Exception:
                     pass
 
-            items.append({"id": _id, "text": doc, "metadata": meta})
+            items.append({
+                "id": _id,
+                "text": doc,
+                "metadata": meta,
+                # Raw Chroma distance (default L2 space, unbounded) — kept for
+                # callers that want a relative relevance signal. Not a
+                # calibrated probability; see app.py's confidence transform.
+                "distance": float(dist) if dist is not None else None,
+            })
 
             if len(items) >= limit:
                 break

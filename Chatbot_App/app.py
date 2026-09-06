@@ -34,6 +34,53 @@ RECENT_MESSAGE_WINDOW = 10
 LONG_TERM_MEMORY_LIMIT = 5
 EXTERNAL_KNOWLEDGE_LIMIT = 5
 
+
+def _citation_title(source: str, metadata: dict) -> str:
+    """Build a human-readable label for a citation from its collection's metadata shape."""
+    metadata = metadata or {}
+    if source == "tech_news":
+        return metadata.get("title") or "Web Document"
+    if source == "car_specs":
+        title = f"{metadata.get('brand', '?')} {metadata.get('model', '?')}"
+        engine = metadata.get("engine")
+        return f"{title} — {engine}" if engine else title
+    if source == "car_reviews":
+        return f"{metadata.get('make', '?')} {metadata.get('model', '?')}"
+    if source == "chat_memory":
+        return "Earlier conversation"
+    return metadata.get("title") or "Source"
+
+
+def _build_citations(news_context, specs_context, reviews_context, retrieved_facts) -> list[dict]:
+    """
+    Attach the sources actually retrieved for this turn as a citations list.
+    Confidence is a relative relevance signal (1 / (1 + distance)), not a
+    calibrated probability — the underlying collections use ChromaDB's
+    default (unbounded) distance space, not a normalized one.
+    """
+    citations = []
+    for source, items in (
+        ("tech_news", news_context),
+        ("car_specs", specs_context),
+        ("car_reviews", reviews_context),
+        ("chat_memory", retrieved_facts),
+    ):
+        for item in items or []:
+            metadata = item.get("metadata") or {}
+            citation = {
+                "source": source,
+                "title": _citation_title(source, metadata),
+                "source_url": metadata.get("source_url"),
+            }
+            distance = item.get("distance")
+            if distance is not None:
+                try:
+                    citation["confidence"] = round(100 / (1 + float(distance)), 1)
+                except (TypeError, ValueError):
+                    pass
+            citations.append(citation)
+    return citations
+
 @app.route('/')
 def home():
     return render_template(
@@ -95,6 +142,7 @@ def analyze():
         # 3. New external knowledge document stores retrieval
         news_context = query_knowledge(collection_name="tech_news", query_text=user_text, limit=EXTERNAL_KNOWLEDGE_LIMIT)
         specs_context = query_knowledge(collection_name="car_specs", query_text=user_text, limit=EXTERNAL_KNOWLEDGE_LIMIT)
+        reviews_context = query_knowledge(collection_name="car_reviews", query_text=user_text, limit=EXTERNAL_KNOWLEDGE_LIMIT)
 
         # Build prompt messages using real chat turns for better behavior
         prompt_messages = [
@@ -144,6 +192,20 @@ def analyze():
                 ),
             })
 
+        if reviews_context:
+            numbered_reviews = "\n".join(
+                f"{i}. {item['text']}" for i, item in enumerate(reviews_context, start=1)
+            )
+            prompt_messages.append({
+                "role": "system",
+                "content": (
+                    f"External Driving-Impression Reviews (these are the only {len(reviews_context)} "
+                    "real reviews available — do not invent ride, handling, or comfort "
+                    "commentary for any car not covered here):\n"
+                    f"{numbered_reviews}"
+                ),
+            })
+
         # Append recent chat history as real turn messages
         if recent_history:
             for message in recent_history:
@@ -160,7 +222,7 @@ def analyze():
         # here too — models weight instructions closer to generation much more
         # heavily than ones earlier in the system messages.
         question_content = f"Question: {user_text}"
-        if news_context or specs_context:
+        if news_context or specs_context or reviews_context:
             question_content += (
                 "\n\nReminder: answer only using the numbered items in the External "
                 "context block(s) above. Do not suggest or mention any company, product, "
@@ -171,10 +233,13 @@ def analyze():
         prompt = tokenizer.apply_chat_template(prompt_messages, tokenize=False, add_generation_prompt=True)
 
         ai_response = generate(model, tokenizer, prompt=prompt, max_tokens=512, verbose=False)
+        ai_response = ai_response.strip()
+
+        citations = _build_citations(news_context, specs_context, reviews_context, retrieved_facts)
 
         # Save context references and outputs after model verification loop
         save_message(session_id, "user", user_text)
-        save_message(session_id, "assistant", ai_response)
+        save_message(session_id, "assistant", ai_response, citations=citations)
 
         # Persist paired memory (single document) for better association
         add_paired_memory(session_id, user_text, ai_response)
@@ -187,7 +252,7 @@ def analyze():
 
             return Response(stream_with_context(generate_stream(ai_response)), mimetype="text/plain")
 
-        return ai_response.strip()
+        return jsonify({"response": ai_response, "citations": citations})
 
     except Exception as e:
         return jsonify({"error": f"MLX Inference Error: {str(e)}"}), 500

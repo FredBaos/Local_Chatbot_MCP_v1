@@ -1,10 +1,11 @@
 """
 Local Knowledge MCP Server
 
-Exposes this project's ChromaDB collections (car_specs, tech_news, chat_memory)
-as MCP tools, so external MCP clients — Claude Desktop, Cursor, a future
-orchestrator agent — can query the same data the chatbot's own RAG pipeline
-uses, without needing to know ChromaDB, embeddings, or this codebase exists.
+Exposes this project's ChromaDB collections (car_specs, car_reviews,
+tech_news, chat_memory) as MCP tools, so external MCP clients — Claude
+Desktop, Cursor, a future orchestrator agent — can query the same data the
+chatbot's own RAG pipeline uses, without needing to know ChromaDB,
+embeddings, or this codebase exists.
 
 This is additive, not a replacement: Chatbot_App/app.py keeps calling
 query_knowledge() / retrieve_memory() directly, in-process, exactly as before.
@@ -42,8 +43,9 @@ from rag_engine.storage.chroma_memory import retrieve_memory
 mcp = FastMCP(
     "local-chatbot-knowledge",
     instructions=(
-        "Search this local chatbot's knowledge base: tech/AI/fintech news "
-        "(car_specs and tech_news are reference knowledge; chat_memory is "
+        "Search this local chatbot's knowledge base: tech/AI/fintech news, "
+        "vehicle specs, and driving-impression reviews (car_specs, "
+        "car_reviews, and tech_news are reference knowledge; chat_memory is "
         "long-term memory of past chat sessions on this machine)."
     ),
 )
@@ -83,6 +85,25 @@ def search_car_specs(query: str, limit: int = 5) -> list[dict]:
         includes make, model, body_type, price, and year.
     """
     return query_knowledge(collection_name="car_specs", query_text=query, limit=limit)
+
+
+@mcp.tool()
+def search_car_reviews(query: str, limit: int = 5) -> list[dict]:
+    """
+    Search subjective driving-impression reviews crawled from topgear.com
+    (ride, handling, comfort, verdict) — complements search_car_specs, which
+    covers hard numbers only.
+
+    Args:
+        query: Natural-language search query (e.g. a make/model, or a
+            question like "how does it handle in corners").
+        limit: Maximum number of results to return.
+
+    Returns:
+        List of {id, text, metadata} results, most relevant first. metadata
+        includes make, model, body_type, rating, and source_url.
+    """
+    return query_knowledge(collection_name="car_reviews", query_text=query, limit=limit)
 
 
 @mcp.tool()

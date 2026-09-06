@@ -130,7 +130,11 @@ def retrieve_memory(query: str, limit: int = 5, exclude_session_id: str = None, 
             continue
 
         seen.add(normalized)
-        filtered.append({"text": normalized, "metadata": meta})
+        filtered.append({
+            "text": normalized,
+            "metadata": meta,
+            "distance": float(dist) if dist is not None else None,
+        })
         if len(filtered) >= limit:
             break
 

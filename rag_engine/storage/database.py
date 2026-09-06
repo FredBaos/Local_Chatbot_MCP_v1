@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import json
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "chat_history.db")
 
@@ -19,17 +20,26 @@ def init_db():
         )
         """
     )
+    # Additive column for citation/confidence metadata (see chatbot's /analyze
+    # route). CREATE TABLE IF NOT EXISTS won't add this to a pre-existing
+    # on-disk DB, and SQLite has no ADD COLUMN IF NOT EXISTS, so guard the
+    # migration against the "duplicate column" error on repeat startups.
+    try:
+        cursor.execute("ALTER TABLE messages ADD COLUMN citations TEXT")
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
     conn.commit()
     conn.close()
 
 
-def save_message(session_id, role, content):
+def save_message(session_id, role, content, citations=None):
     """Persists a new chat token row into the database."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)",
-        (session_id, role, str(content)),
+        "INSERT INTO messages (session_id, role, content, citations) VALUES (?, ?, ?, ?)",
+        (session_id, role, str(content), json.dumps(citations) if citations else None),
     )
     conn.commit()
     conn.close()
@@ -41,8 +51,8 @@ def get_session_history(session_id, limit=1000):
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT role, content FROM (
-            SELECT role, content, id
+        SELECT role, content, citations FROM (
+            SELECT role, content, citations, id
             FROM messages
             WHERE session_id = ?
             ORDER BY id DESC
@@ -54,7 +64,17 @@ def get_session_history(session_id, limit=1000):
     )
     rows = cursor.fetchall()
     conn.close()
-    return [{"role": row[0], "content": row[1]} for row in rows]
+
+    messages = []
+    for role, content, citations_json in rows:
+        message = {"role": role, "content": content}
+        if citations_json:
+            try:
+                message["citations"] = json.loads(citations_json)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        messages.append(message)
+    return messages
 
 
 def get_recent_global_history(limit=1000):
